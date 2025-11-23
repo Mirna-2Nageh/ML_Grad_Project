@@ -1,326 +1,104 @@
-# 📘 Smart Legal Assistant (Egyptian Penal Code) – README
+# 📂 Smart Legal Assistant - Complete Project Folder Structure (MLOps Ready)
 
-## **📌 Overview**
+## **Project Overview**
 
-The **Smart Legal Assistant** is an AI-powered system designed to support Egyptian lawyers—specifically in the domain of the **Egyptian Penal Code**. The system performs advanced legal reasoning using NLP, LLMs, and Retrieval-Augmented Generation (RAG). It analyzes case documents, retrieves relevant legal articles, finds precedents, and identifies procedural or evidential weaknesses in the case.
-
-The project is designed using **MLOps best practices**, including modular pipelines, reproducibility, model tracking, API deployment, and automated updates.
+This is the final folder structure for the **Smart Legal Assistant** project targeting the Egyptian Penal Code. It supports **online training**, **model saving**, **fine-tuning**, **RAG pipeline**, **Weakness Detection**, **evaluation**, and **deployment**.
 
 ---
 
-## **🎯 Project Goals**
-
-* Build a real, practical AI assistant for lawyers.
-* Focus on one legal domain: **Egyptian Penal Code**.
-* Combine **Machine Learning + RAG + LLM reasoning**.
-* Detect **weak points (legal loopholes)** in case files.
-* Provide **explainable, legally grounded answers**.
-* Fully reproducible using an MLOps pipeline.
-* Deploy a working MVP without any paid cloud services.
-
----
-
-## **🧠 Key Features**
-
-### ✅ **1. Case Understanding Engine**
-
-Extracts:
-
-* Facts
-* Evidence
-* Legal entities (accused, victim, locations)
-* Charges & relevant articles
-
-### ✅ **2. RAG Pipeline (Retrieval-Augmented Generation)**
-
-Retrieves:
-
-* Penal Code articles
-* Egyptian court precedents
-* Similar case patterns
-* Defense arguments from real memorandums
-
-### ✅ **3. Weakness & Loophole Detector**
-
-Automatically detects:
-
-* Procedural errors (invalid arrest/search)
-* Missing evidence
-* Weak witness testimony
-* Contradictions in statements
-* Violations of criminal procedures
-
-### ✅ **4. LLM Legal Reasoning**
-
-Generates:
-
-* Defense strategies
-* Explanation of applicable articles
-* Legal interpretation
-* Structured case summaries
-
-### ✅ **5. MLOps-Compliant Pipeline**
-
-Includes:
-
-* Model training & evaluation
-* Versioning via HuggingFace
-* MLflow for experiment tracking
-* CI/CD
-* API deployment
-* Monitoring & rollback
-
----
-
-## **📁 Project Structure**
+## **Folder Structure & File Descriptions**
 
 ```
-root
+smart_legal_assistant_project/
 │
-├── data/
-│   ├── laws/                  # Egyptian Penal Code articles (text)
-│   ├── cases/                 # Case documents
-│   ├── defenses/              # Defense memorandums
-│   ├── precedents/            # Court rulings
-│   └── processed/             # Cleaned text files
+├── data/                       # All data sources
+│   ├── laws/                    # Raw legal texts (Penal Code articles)
+│   ├── precedents/              # Court rulings and previous cases
+│   ├── defense_memos/           # Defense memorandums for training LLM
+│   ├── cases_raw/               # Original unprocessed case files (PDF/TXT)
+│   ├── cases_annotated/         # Manually labeled cases (Weak Points, Facts, Evidence, Articles)
+│   ├── weak_points/             # Structured Weak Points examples
+│   └── embeddings/              # Precomputed embeddings for RAG
 │
-├── notebooks/                 # EDA and training notebooks
+├── notebooks/                   # Jupyter / Colab notebooks
+│   ├── data_exploration.ipynb   # EDA for understanding dataset distribution
+│   ├── preprocessing.ipynb      # Cleaning, OCR, NER, Chunking experiments
+│   └── model_training.ipynb     # Fine-tuning LLMs and Weakness Detection
 │
-├── src/
-│   ├── preprocessing/         # Text cleaning, parsing, NER
-│   ├── rag/                   # Vector DB, retrieval pipeline
-│   ├── models/                # LLMs, fine-tuning scripts
-│   ├── inference/             # End-to-end pipeline
-│   ├── api/                   # FastAPI endpoints
-│   └── utils/                 # Helpers
+├── src/                         # Source code
+│   ├── preprocessing/           # Cleaning & NER
+│   │   ├── ocr.py
+│   │   ├── text_cleaning.py
+│   │   └── ner_extraction.py
+│   ├── rag/                     # Retrieval pipeline
+│   │   ├── vector_db.py
+│   │   ├── retriever.py
+│   │   └── query_handler.py
+│   ├── models/                  # LLMs & Weakness Detection
+│   │   ├── fine_tune.py
+│   │   ├── lora_adapter.py
+│   │   └── weakness_detector.py
+│   ├── inference/               # End-to-end prediction pipeline
+│   │   └── run_inference.py
+│   ├── api/                     # FastAPI backend endpoints
+│   │   ├── main.py
+│   │   └── utils.py
+│   ├── utils/                   # Helper functions
+│   │   └── helpers.py
+│   ├── evaluation/              # Model evaluation
+│   │   ├── legal_benchmark.py   # Automated benchmarks on legal dataset
+│   │   └── expert_review.py     # Human expert review interface
+│   ├── data_pipeline/           # Data loading and versioning
+│   │   ├── data_loader.py       # Unified data loading scripts
+│   │   └── data_versioning.py   # Track dataset versions for reproducibility
+│   └── config/                  # Configuration files
+│       ├── model_config.yaml    # Model hyperparameters & RAG settings
+│       └── api_config.yaml      # API host, port, authentication, endpoints
 │
-├── mlops/
-│   ├── mlflow/                # Configs for experiment tracking
-│   ├── ci_cd/                 # GitHub Actions workflows
-│   ├── registry/              # Model registry structure
-│   └── monitoring/            # Logs and evaluation tools
+├── mlops/                       # MLOps related
+│   ├── mlflow/                  # MLflow experiment tracking
+│   │   └── mlflow_tracking.yaml
+│   ├── ci_cd/                   # GitHub Actions workflows
+│   │   └── workflow.yml
+│   ├── registry/                # Saved models & versioning
+│   │   └── model_v1/
+│   └── monitoring/              # Logs & evaluation monitoring
+│       └── monitor.py
 │
-├── deployment/
-│   ├── docker/                # Dockerfile
-│   ├── hf_spaces/             # HuggingFace Spaces deployment
-│   └── frontend/              # Simple React/Flutter UI
+├── deployment/                  # Deployment files
+│   ├── docker/                  # Dockerfile, docker-compose.yml
+│   ├── hf_spaces/               # HuggingFace Spaces configs
+│   └── frontend/                # React / Flutter UI
+│       ├── src/
+│       └── public/
 │
-└── README.md
+├── tests/                       # Unit tests
+│   ├── test_rag.py              # Test RAG pipeline
+│   └── test_models.py           # Test LLMs & Weakness Detection
+│
+├── scripts/                     # Utility scripts
+│   ├── setup_env.sh             # Environment setup
+│   └── download_data.py         # Download / preprocess dataset
+│
+├── docs/                        # Documentation
+│   ├── api.md                   # API endpoint documentation
+│   └── deployment.md            # Deployment instructions
+│
+├── requirements.txt             # Python dependencies
+├── README.md                     # Project documentation
+└── setup.py                      # Optional Python package setup
 ```
 
 ---
 
-## **🗂 Data Sources (FREE)**
+## **Key Notes**
+
+1. **Evaluation** ensures model quality and credibility (legal_benchmark + expert_review).
+2. **Data Pipeline** handles reproducibility and versioning.
+3. **Config** separates hyperparameters and API settings from code.
+4. **Tests** validate every module to prevent regressions.
+5. **Scripts** simplify environment setup and data downloading.
+6. **Docs** improve usability and maintainability.
+7. Supports **MLOps workflow**: training online, saving models, fine-tuning, and deployment.
+8. Fully modular, ready for **RAG + LLM + Weakness Detection + API + Frontend** integration.
 
-### **1. Egyptian Penal Code**
-
-* Official Government Portal (public legal texts)
-
-### **2. Court Rulings**
-
-* Published Egyptian Court of Cassation decisions
-
-### **3. Public Defense Memorandums**
-
-* Openly published legal documents
-
-### **4. Self-Labeled Data** (custom)
-
-* Annotated cases with:
-
-  * charges
-  * facts
-  * procedural issues
-  * legal weaknesses
-
----
-
-## **🤖 Models Used**
-
-### **Embedding Models**
-
-* BGE-M3 (small, multilingual)
-* Legal-BERT Arabic
-
-### **LLMs for Reasoning**
-
-* Qwen 2.5 7B
-* Llama 3.1 8B
-* Gemma 2 9B
-
-### **Retrieval Models**
-
-* BM25
-* FAISS Vector Database
-* Optional: ColBERT for legal retrieval
-
----
-
-## **🏗 Architecture**
-
-### **1. Input Layer**
-
-User uploads a case → system extracts key legal elements.
-
-### **2. Preprocessing**
-
-* OCR (if PDF)
-* Text chunking
-* NER to detect legal entities
-
-### **3. Retrieval Layer**
-
-* Query → embeddings → FAISS
-* Pulls articles + precedents + similar cases
-
-### **4. LLM Reasoning**
-
-The LLM receives a structured prompt:
-
-```
-Facts:
-Relevant Articles:
-Similar Cases:
-Potential Issues:
-
-Task: provide legal analysis + weaknesses + defense strategies.
-```
-
-### **5. Output**
-
-* Case summary
-* Relevant law articles
-* Precedent rulings
-* Weakness detection
-* Defense plan
-
----
-
-## **⚙ MLOps Pipeline**
-
-### **Experiment Tracking**
-
-* MLflow (local or hosted)
-
-### **Model Registry**
-
-* HuggingFace Model Hub
-
-### **CI/CD**
-
-* GitHub Actions:
-
-  * run tests
-  * validate model
-  * build API
-  * auto deploy to HF Spaces
-
-### **Monitoring**
-
-* Prompt quality checker
-* Retrieval accuracy
-* Model drift alerts
-
----
-
-## **🚀 Deployment**
-
-### **Backend API**
-
-* FastAPI for:
-
-  * `/summarize`
-  * `/retrieve_articles`
-  * `/detect_weaknesses`
-  * `/legal_reasoning`
-
-### **Frontend**
-
-* Simple chat UI (React or Flutter)
-* Upload PDF/Doc
-
-### **Deployment Options (Free)**
-
-* HuggingFace Spaces
-* Render Free Tier
-* Docker locally
-
----
-
-## **🔎 Weakness Detection Logic**
-
-The system flags:
-
-* Lack of direct evidence
-* Contradictory witness statements
-* Invalid search or arrest
-* Missing chain of custody
-* Procedural violations
-* No intent proof
-
-Model is trained on:
-
-* Annotated legal cases
-* Defense patterns
-* Precedent-based reasoning
-
----
-
-## **🧪 Fine-tuning Strategy**
-
-### **1. Instruction Tuning**
-
-Train on legal Q/A and reasoning examples.
-
-### **2. LoRA Adapter**
-
-Used to fine‑tune large models on free GPUs.
-
-### **3. Evaluation Metrics**
-
-* Retrieval Accuracy
-* Legal correctness
-* Reasoning depth
-* Hallucination rate
-
----
-
-## **🧩 MVP Scope**
-
-* Penal Code only
-* 10–20 articles
-* 50–100 case samples
-* Basic RAG
-* Weakness detection
-* Simple UI
-
-After MVP works → scale to:
-
-* Economic Crimes
-* Cybercrime Law
-* Civil Law
-
----
-
-## **📄 License**
-
-This project is for **educational and research purposes only**.
-It does **not** provide professional legal advice.
-
----
-
-## **👩‍💻 Contributors**
-
-* **Machine Learning & MLOps:** Your Name
-* **Legal Research:** —
-* **Backend & Frontend:** —
-
-You can expand this section later.
-
----
-
-## **📬 Contact**
-
-For collaboration or support:
-
-> Email: [example@mail.com](mailto:example@mail.com)
