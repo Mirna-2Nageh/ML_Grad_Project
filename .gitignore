@@ -206,4 +206,24 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 raw
-/.env
+# Virtual Environment
+LAW/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Environment variables
+.env
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+
+
