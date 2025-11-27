@@ -205,7 +205,5 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
-/test/legal-assistant/data
-/data
+raw
 /.env
-data

@@ -1,0 +1,365 @@
+{
+  "total_documents": 51,
+  "successful": 51,
+  "failed": 0,
+  "total_pages": 3739,
+  "documents": [
+    {
+      "filename": "MOTA20230601_0150.pdf",
+      "method": "native_extraction",
+      "pages": 2,
+      "success": true,
+      "text_length": 3628
+    },
+    {
+      "filename": "OG17_20250428_1888.pdf",
+      "method": "native_extraction",
+      "pages": 16,
+      "success": true,
+      "text_length": 24048
+    },
+    {
+      "filename": "OG35_20250903_3269.pdf",
+      "method": "native_extraction",
+      "pages": 103,
+      "success": true,
+      "text_length": 11501
+    },
+    {
+      "filename": "كتاب جرائم الشيك.pdf",
+      "method": "native_extraction",
+      "pages": 356,
+      "success": true,
+      "text_length": 561217
+    },
+    {
+      "filename": "Document 3 (1).pdf",
+      "method": "native_extraction",
+      "pages": 3,
+      "success": true,
+      "text_length": 1094
+    },
+    {
+      "filename": "NCW20230420_2345.pdf",
+      "method": "native_extraction",
+      "pages": 3,
+      "success": true,
+      "text_length": 7060
+    },
+    {
+      "filename": "العقوبات.pdf",
+      "method": "ocr",
+      "pages": 30,
+      "success": true,
+      "text_length": 111236
+    },
+    {
+      "filename": "OG39_20241001_1049.pdf",
+      "method": "native_extraction",
+      "pages": 8,
+      "success": true,
+      "text_length": 9724
+    },
+    {
+      "filename": "NCCM20250124_0635.pdf",
+      "method": "native_extraction",
+      "pages": 6,
+      "success": true,
+      "text_length": 13918
+    },
+    {
+      "filename": "كتاب التلبس بالجريمة.pdf",
+      "method": "native_extraction",
+      "pages": 166,
+      "success": true,
+      "text_length": 156496
+    },
+    {
+      "filename": "الحبس الأحتياطى فى القانون المصرى.pdf",
+      "method": "native_extraction",
+      "pages": 44,
+      "success": true,
+      "text_length": 97391
+    },
+    {
+      "filename": "eg056ar.pdf",
+      "method": "native_extraction",
+      "pages": 148,
+      "success": true,
+      "text_length": 186544
+    },
+    {
+      "filename": "OG51_20241223_4709.pdf",
+      "method": "native_extraction",
+      "pages": 4,
+      "success": true,
+      "text_length": 2703
+    },
+    {
+      "filename": "مشكلات اذن النيابة العامة بالتفتيش المشكلات العملية المرتبطة بتنفيذ اذن النيابة.pdf",
+      "method": "native_extraction",
+      "pages": 87,
+      "success": true,
+      "text_length": 115722
+    },
+    {
+      "filename": "بحث جريمة النصب pdf.pdf",
+      "method": "native_extraction",
+      "pages": 38,
+      "success": true,
+      "text_length": 48952
+    },
+    {
+      "filename": "OG34_20240826_1498.pdf",
+      "method": "native_extraction",
+      "pages": 15,
+      "success": true,
+      "text_length": 15663
+    },
+    {
+      "filename": "تحقيقات القضايا الجنائية.pdf",
+      "method": "native_extraction",
+      "pages": 60,
+      "success": true,
+      "text_length": 86030
+    },
+    {
+      "filename": "الوجيز فى الاجراءات الجنائيه.pdf",
+      "method": "native_extraction",
+      "pages": 76,
+      "success": true,
+      "text_length": 174825
+    },
+    {
+      "filename": "كتاب في جرائم السرقات.pdf",
+      "method": "native_extraction",
+      "pages": 78,
+      "success": true,
+      "text_length": 155990
+    },
+    {
+      "filename": "OG45_20251112_2231.pdf",
+      "method": "native_extraction",
+      "pages": 139,
+      "success": true,
+      "text_length": 200967
+    },
+    {
+      "filename": "OG29_20250721_3657.pdf",
+      "method": "native_extraction",
+      "pages": 8,
+      "success": true,
+      "text_length": 9722
+    },
+    {
+      "filename": "دستور-جمهورية-مصر-العربية-2019.pdf",
+      "method": "native_extraction",
+      "pages": 114,
+      "success": true,
+      "text_length": 132175
+    },
+    {
+      "filename": "WQ41_20240219_7041.pdf",
+      "method": "native_extraction",
+      "pages": 4,
+      "success": true,
+      "text_length": 2726
+    },
+    {
+      "filename": "eg066ar_1.pdf",
+      "method": "native_extraction",
+      "pages": 100,
+      "success": true,
+      "text_length": 63514
+    },
+    {
+      "filename": "جرائم_الحريق_والتخريب والاتلاف - converted.pdf",
+      "method": "ocr",
+      "pages": 193,
+      "success": true,
+      "text_length": 209411
+    },
+    {
+      "filename": "الإصابات والجروح في القضايا الجنائية .pdf",
+      "method": "ocr",
+      "pages": 11,
+      "success": true,
+      "text_length": 15351
+    },
+    {
+      "filename": "كتاب بعنوان (شرح قانون العقوبات القسم الخاص جرائم الاعتداء على الاشخاص والاموال تأليف الدكتور سامح -1.pdf",
+      "method": "ocr",
+      "pages": 436,
+      "success": true,
+      "text_length": 581427
+    },
+    {
+      "filename": "المواعيد في الشيك وآثارها الاجرائية_1.pdf",
+      "method": "native_extraction",
+      "pages": 84,
+      "success": true,
+      "text_length": 169246
+    },
+    {
+      "filename": "OG29_20240718_2546.pdf",
+      "method": "native_extraction",
+      "pages": 23,
+      "success": true,
+      "text_length": 27676
+    },
+    {
+      "filename": "NCW20230504_1900.pdf",
+      "method": "native_extraction",
+      "pages": 2,
+      "success": true,
+      "text_length": 4691
+    },
+    {
+      "filename": "جرائم الاهانة والسب والقذف والسب معلقا عليها باحكام النقض.pdf",
+      "method": "ocr",
+      "pages": 29,
+      "success": true,
+      "text_length": 40722
+    },
+    {
+      "filename": "OG40_20251005_9871.pdf",
+      "method": "native_extraction",
+      "pages": 8,
+      "success": true,
+      "text_length": 9765
+    },
+    {
+      "filename": "كل_ما_يخص_ايصالات_الامانة.pdf",
+      "method": "native_extraction",
+      "pages": 16,
+      "success": true,
+      "text_length": 34409
+    },
+    {
+      "filename": "كتاب بعنوان (شرح قانون العقوبات القسم الخاص جرائم الاعتداء على الاشخاص والاموال تأليف الدكتور سامح .pdf",
+      "method": "ocr",
+      "pages": 436,
+      "success": true,
+      "text_length": 581427
+    },
+    {
+      "filename": "ESR20160117_0602.pdf",
+      "method": "native_extraction",
+      "pages": 156,
+      "success": true,
+      "text_length": 788
+    },
+    {
+      "filename": "ارشادات قضائية بشأن جريمة امتناع تسليم ميراث.pdf",
+      "method": "ocr",
+      "pages": 19,
+      "success": true,
+      "text_length": 16688
+    },
+    {
+      "filename": "MHP20241228_0300.pdf",
+      "method": "native_extraction",
+      "pages": 4,
+      "success": true,
+      "text_length": 6710
+    },
+    {
+      "filename": "NCW20230614_1410.pdf",
+      "method": "native_extraction",
+      "pages": 2,
+      "success": true,
+      "text_length": 4114
+    },
+    {
+      "filename": "alamiria_2024_6.pdf",
+      "method": "native_extraction",
+      "pages": 8,
+      "success": true,
+      "text_length": 10517
+    },
+    {
+      "filename": "القبض و التفتيش لسعيد محمود الديب المحامي (1).pdf",
+      "method": "native_extraction",
+      "pages": 88,
+      "success": true,
+      "text_length": 141272
+    },
+    {
+      "filename": "OG35_20250903_3269-1.pdf",
+      "method": "native_extraction",
+      "pages": 103,
+      "success": true,
+      "text_length": 11501
+    },
+    {
+      "filename": "ESR20160117_0602-1.pdf",
+      "method": "native_extraction",
+      "pages": 156,
+      "success": true,
+      "text_length": 788
+    },
+    {
+      "filename": "NCHR20250127_1230.pdf",
+      "method": "native_extraction",
+      "pages": 2,
+      "success": true,
+      "text_length": 1933
+    },
+    {
+      "filename": "eg081ar_1.pdf",
+      "method": "native_extraction",
+      "pages": 94,
+      "success": true,
+      "text_length": 120012
+    },
+    {
+      "filename": "البراءة في جرائم القتل وإصابة الخطأ.pdf",
+      "method": "ocr",
+      "pages": 43,
+      "success": true,
+      "text_length": 69593
+    },
+    {
+      "filename": "OG3_20250118_2579.pdf",
+      "method": "native_extraction",
+      "pages": 8,
+      "success": true,
+      "text_length": 9661
+    },
+    {
+      "filename": "WQ177_20240815_2222.pdf",
+      "method": "native_extraction",
+      "pages": 4,
+      "success": true,
+      "text_length": 1777
+    },
+    {
+      "filename": "WQ79_20250408_2360.pdf",
+      "method": "native_extraction",
+      "pages": 4,
+      "success": true,
+      "text_length": 1805
+    },
+    {
+      "filename": "Palestine-Penal-Code-Gaza-Egyptian-1939-Arabic.pdf",
+      "method": "native_extraction",
+      "pages": 84,
+      "success": true,
+      "text_length": 184833
+    },
+    {
+      "filename": "قانون_الاجراءات_الجنائية.pdf",
+      "method": "native_extraction",
+      "pages": 110,
+      "success": true,
+      "text_length": 167908
+    },
+    {
+      "filename": "OG48_20231204_0120.pdf",
+      "method": "native_extraction",
+      "pages": 8,
+      "success": true,
+      "text_length": 6294
+    }
+  ]
+}
