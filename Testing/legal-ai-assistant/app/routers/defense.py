@@ -31,6 +31,8 @@ async def generate_defense(req: DefenseRequest):
 
     prompt = PROMPTS["defense"].format(
         case_facts=req.case_facts,
+        evidence=req.evidence or "لم تُقدَّم أدلة إضافية بخلاف ما ورد في الوقائع.",
+        defendant_statement=req.defendant_statement or "لم يُقدَّم بيان منفصل للمتهم.",
         weaknesses=req.weaknesses or "لم يتم تحديد نقاط ضعف محددة",
         legal_refs=legal_refs,
     )

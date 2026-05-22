@@ -30,6 +30,8 @@ async def detect_weakness(req: WeaknessRequest):
 
     prompt = PROMPTS["weakness"].format(
         case_facts=req.case_facts,
+        evidence=req.evidence or "لم تُقدَّم أدلة إضافية بخلاف ما ورد في الوقائع.",
+        defendant_statement=req.defendant_statement or "لم يُقدَّم بيان منفصل للمتهم.",
         legal_refs=legal_refs,
     )
     analysis, _, model_used = await async_call_llm(

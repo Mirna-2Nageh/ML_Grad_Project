@@ -33,6 +33,8 @@ class SummarizeRequest(BaseModel):
 class WeaknessRequest(BaseModel):
     """Case weakness detection request."""
     case_facts: str = Field(..., description="Case facts text in Arabic", min_length=20, max_length=10000)
+    evidence: str = Field(default="", description="Evidence items (cameras, medical reports, witness statements, prior history). Each will be analyzed explicitly.", max_length=15000)
+    defendant_statement: str = Field(default="", description="The defendant's own narrative / defenses raised (e.g., self-defense, mutual assault, denial)", max_length=5000)
 
     model_config = {"json_schema_extra": {
         "examples": [{"case_facts": "المتهم متهم بالسرقة بالإكراه ليلاً. تم القبض عليه بناءً على بلاغ مجهول."}]
@@ -43,6 +45,8 @@ class DefenseRequest(BaseModel):
     """Defense memorandum generation request."""
     case_facts: str = Field(..., description="Case facts in Arabic", min_length=20, max_length=10000)
     weaknesses: str = Field(default="", description="Previously identified weaknesses (optional)", max_length=5000)
+    evidence: str = Field(default="", description="Evidence items (cameras, medical reports, witness statements, prior history). Each will be analyzed explicitly.", max_length=15000)
+    defendant_statement: str = Field(default="", description="The defendant's own narrative / defenses raised (e.g., self-defense, mutual assault, denial)", max_length=5000)
 
     model_config = {"json_schema_extra": {
         "examples": [{"case_facts": "المتهم متهم بالسرقة.", "weaknesses": "عدم وجود شهود عيان"}]
