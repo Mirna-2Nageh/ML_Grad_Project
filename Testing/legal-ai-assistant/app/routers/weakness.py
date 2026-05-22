@@ -26,7 +26,7 @@ async def detect_weakness(req: WeaknessRequest):
     t0 = time.time()
 
     contexts, sources, _ = retrieval_service.retrieve(req.case_facts, k=7)
-    legal_refs = "\n---\n".join(contexts)
+    legal_refs = "\n---\n".join(contexts)[:config.MAX_CONTEXT_CHARS]
 
     prompt = PROMPTS["weakness"].format(
         case_facts=req.case_facts,

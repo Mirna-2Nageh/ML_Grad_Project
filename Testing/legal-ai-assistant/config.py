@@ -146,6 +146,14 @@ CONFIDENCE_WEIGHTS = {
 CONFIDENCE_THRESHOLD_CLARIFY = float(os.getenv("CONFIDENCE_THRESHOLD_CLARIFY", "0.4"))
 
 # ──────────────────────────────────────────────
+# Agentic memo self-check (draft → verify against context → revise)
+# Closes the argument-level hallucination gap: validator catches fabricated article
+# numbers; this catches unsupported legal arguments/citations and revises them out.
+# ──────────────────────────────────────────────
+MEMO_SELF_CHECK = os.getenv("MEMO_SELF_CHECK", "True").lower() == "true"
+MEMO_SELF_CHECK_MAX_ITERS = int(os.getenv("MEMO_SELF_CHECK_MAX_ITERS", "1"))
+
+# ──────────────────────────────────────────────
 # Session Management (chat history compaction + persistence)
 # ──────────────────────────────────────────────
 SESSION_MAX_TURNS = int(os.getenv("SESSION_MAX_TURNS", "6"))         # compact when > N turns

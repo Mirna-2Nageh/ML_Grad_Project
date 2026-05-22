@@ -103,6 +103,19 @@ SYSTEM_MESSAGES = {
         "- Address multiple charges or defendants separately.\n"
         "LANGUAGE: formal Modern Standard Arabic legal register only."
     ),
+    "verify_memo": (
+        f"{IDENTITY_PROTOCOL}\n\n"
+        "ROLE: Senior legal reviewer performing a grounding check on a defense memorandum.\n"
+        "Your sole job is to make the memorandum FULLY GROUNDED in the provided material — not to make it longer "
+        "or more persuasive.\n"
+        "RULES:\n"
+        "- Every cited article number MUST appear in the provided legal texts. Remove or correct any that do not.\n"
+        "- Every legal assertion MUST be supported by the provided legal texts or the stated case facts. "
+        "Delete any claim, ruling, or fact that is not supported.\n"
+        "- Do NOT introduce any new citation, ruling, or fact not present in the provided material.\n"
+        "- Preserve the structure (الوقائع، الإطار القانوني، أوجه الدفاع، الطلبات) and formal MSA Arabic.\n"
+        "- Output ONLY the corrected memorandum — no commentary about the changes."
+    ),
     "chat": (
         f"{IDENTITY_PROTOCOL}\n\n"
         f"{CORE_INSTRUCTIONS}\n\n"
@@ -172,6 +185,18 @@ PROMPTS = {
         "Use a formal numbered list. Do not omit any legally-binding clause.\n\n"
         "Text:\n{text}\n\n"
         "Summary (Arabic, numbered list):"
+    ),
+    "verify_memo": (
+        "Review and correct the following defense memorandum so it is fully grounded in the provided material. "
+        "Use ONLY the legal texts and case facts below — do not add new citations, rulings, or facts.\n\n"
+        "Provided Legal Texts:\n{legal_refs}\n\n"
+        "Case Facts:\n{case_facts}\n\n"
+        "Memorandum Draft:\n{draft}\n\n"
+        "Article citations flagged as NOT found in the provided texts (remove or correct each): {flagged}\n\n"
+        "Return the corrected memorandum in Arabic under the headings الوقائع، الإطار القانوني، أوجه الدفاع، الطلبات. "
+        "Remove any article number not present in the provided texts, and delete any legal argument or fact that the "
+        "provided material does not support.\n\n"
+        "المذكرة بعد المراجعة:"
     ),
     "compact_history": (
         "Compact the following conversation history into a concise summary. "

@@ -11,6 +11,7 @@ from app.services.llm import (
     async_call_llm, used_fallback, is_llm_error, FALLBACK_NOTICE_AR, LLM_ERROR_NOTICE_AR,
 )
 from app.services.confidence import validate_evidence, topic_match, compute_confidence
+from app.services.memo_agent import self_check_memo
 from app.core.prompts import PROMPTS, SYSTEM_MESSAGES
 
 router = APIRouter()
@@ -26,7 +27,7 @@ async def generate_defense(req: DefenseRequest):
     t0 = time.time()
 
     contexts, sources, _ = retrieval_service.retrieve(req.case_facts, k=7)
-    legal_refs = "\n---\n".join(contexts)
+    legal_refs = "\n---\n".join(contexts)[:config.MAX_CONTEXT_CHARS]
 
     prompt = PROMPTS["defense"].format(
         case_facts=req.case_facts,
@@ -38,6 +39,16 @@ async def generate_defense(req: DefenseRequest):
     )
     if is_llm_error(model_used):
         raise HTTPException(status_code=503, detail=LLM_ERROR_NOTICE_AR)
+
+    # Agentic self-check: verify citations + arguments against context, revise out
+    # anything unsupported. Validation/confidence below run on the REVISED memo.
+    self_check_revisions = 0
+    if config.MEMO_SELF_CHECK:
+        memorandum, sc_model, self_check_revisions = await self_check_memo(
+            memorandum, legal_refs, req.case_facts, contexts,
+        )
+        if sc_model:
+            model_used = sc_model
 
     article_pass, missing = validate_evidence(memorandum, contexts)
     topic_hit = topic_match(req.case_facts, sources)
@@ -70,4 +81,5 @@ async def generate_defense(req: DefenseRequest):
         conflicts_detected=False,
         latency_ms=round((time.time() - t0) * 1000, 1),
         model=model_used,
+        self_check_revisions=self_check_revisions,
     )

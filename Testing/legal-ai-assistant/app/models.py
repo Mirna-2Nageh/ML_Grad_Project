@@ -122,6 +122,7 @@ class DefenseResponse(BaseModel):
     conflicts_detected: bool = Field(default=False)
     latency_ms: float = Field(..., description="Total response time in milliseconds")
     model: str = Field(default="", description="LLM model used")
+    self_check_revisions: int = Field(default=0, description="Number of agentic self-check revision passes applied to the memo")
 
 
 class HealthResponse(BaseModel):
