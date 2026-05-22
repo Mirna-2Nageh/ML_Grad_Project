@@ -40,7 +40,7 @@ async def chat(req: ChatRequest):
     was_compacted = False
     if await session_manager.should_compact(req.session_id):
         async def _llm_summarizer(prompt, sys_msg):
-            text, _ = await async_call_llm(prompt, system_msg=sys_msg, feature="compact")
+            text, _, _ = await async_call_llm(prompt, system_msg=sys_msg, feature="compact")
             return text
         await session_manager.compact(req.session_id, _llm_summarizer)
         was_compacted = True
@@ -59,7 +59,7 @@ async def chat(req: ChatRequest):
     )
 
     # 4. Generate answer
-    answer, _ = await async_call_llm(
+    answer, _, model_used = await async_call_llm(
         prompt, feature="qa", system_msg=SYSTEM_MESSAGES["chat"],
     )
 
@@ -99,7 +99,7 @@ async def chat(req: ChatRequest):
         latency_ms=round(total_ms, 1),
         turn_count=session.turn_count,
         was_compacted=was_compacted,
-        model=config.LLM_MODEL,
+        model=model_used,
     )
 
 
@@ -126,7 +126,7 @@ async def chat_stream(req: ChatRequest):
     session = await session_manager.add_user_message(req.session_id, req.message)
     if await session_manager.should_compact(req.session_id):
         async def _summarizer(prompt, sys_msg):
-            text, _ = await async_call_llm(prompt, system_msg=sys_msg, feature="compact")
+            text, _, _ = await async_call_llm(prompt, system_msg=sys_msg, feature="compact")
             return text
         await session_manager.compact(req.session_id, _summarizer)
 

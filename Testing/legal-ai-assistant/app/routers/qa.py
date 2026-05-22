@@ -34,7 +34,7 @@ async def legal_qa(req: QARequest):
     prompt_key = f"qa_{req.prompt_style}" if f"qa_{req.prompt_style}" in PROMPTS else "qa_restrictive"
     prompt = PROMPTS[prompt_key].format(context=context_str, question=req.question)
 
-    answer, _ = await async_call_llm(
+    answer, _, model_used = await async_call_llm(
         prompt, feature="qa", system_msg=SYSTEM_MESSAGES["qa"],
     )
 
@@ -70,5 +70,5 @@ async def legal_qa(req: QARequest):
         conflicts_detected=False,
         latency_ms=round(total_ms, 1),
         retrieval_ms=round(timing.get("total_ms", 0), 1),
-        model=config.LLM_MODEL,
+        model=model_used,
     )

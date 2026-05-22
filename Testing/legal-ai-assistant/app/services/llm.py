@@ -46,30 +46,31 @@ def get_async_client() -> AsyncOpenAI:
 def call_llm(
     prompt: str,
     temperature: float = None,
-    max_tokens: int = 2048,
+    max_tokens: int = 4096,
     system_msg: str = None,
     feature: str = "default",
-) -> Tuple[str, float]:
+) -> Tuple[str, float, str]:
     """
     Call LLM via Gemini (Primary) or OpenRouter (Fallback).
+    Returns (text, elapsed_seconds, model_used).
     """
     temp = temperature if temperature is not None else config.TEMPERATURES.get(
         feature, config.TEMPERATURES["default"]
     )
 
     t0 = time.time()
-    
+
     # --- Try Google Gemini first (using modern native API) ---
     if config.GOOGLE_API_KEY:
         try:
             from google import genai
             from google.genai import types
-            
+
             client = genai.Client(api_key=config.GOOGLE_API_KEY)
-            
+
             # Combine system msg and prompt for Gemini
             full_prompt = f"{system_msg}\n\n{prompt}" if system_msg else prompt
-            
+
             # Try a loop of model names
             for model_id in ['models/gemini-2.5-flash', 'models/gemini-2.0-flash', 'models/gemini-2.0-flash-lite']:
                 try:
@@ -79,15 +80,21 @@ def call_llm(
                         config=types.GenerateContentConfig(
                             temperature=temp,
                             max_output_tokens=max_tokens,
+                            # Cap hidden "thinking" tokens so they don't consume the
+                            # output budget and truncate the visible answer (2.5 Flash
+                            # defaults to unbounded dynamic thinking).
+                            thinking_config=types.ThinkingConfig(
+                                thinking_budget=config.GEMINI_THINKING_BUDGET
+                            ),
                         )
                     )
                     text = response.text.strip()
                     if text:
-                        return text, time.time() - t0
+                        return text, time.time() - t0, model_id.split("/", 1)[-1]
                 except Exception as inner_e:
                     logger.warning(f"Attempt with {model_id} failed: {inner_e}")
                     continue
-                    
+
         except Exception as e:
             logger.warning(f"Native Gemini call failed: {e}. Falling back to OpenRouter...")
 
@@ -110,22 +117,23 @@ def call_llm(
             text = response.choices[0].message.content.strip()
             import re
             text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL).strip()
-            return text, time.time() - t0
+            return text, time.time() - t0, config.LLM_MODEL
         except Exception as e:
             logger.warning(f"OpenRouter attempt {attempt+1} failed: {e}")
             time.sleep(1)
 
-    return "[ERROR: LLM Service Unavailable]", time.time() - t0
+    return "[ERROR: LLM Service Unavailable]", time.time() - t0, "error"
 
 
 async def async_call_llm(
     prompt: str,
     temperature: float = None,
-    max_tokens: int = 2048,
+    max_tokens: int = 4096,
     system_msg: str = None,
     feature: str = "default",
-) -> tuple:
-    """Non-blocking async wrapper around call_llm. Offloads the sync HTTP call via asyncio.to_thread."""
+) -> Tuple[str, float, str]:
+    """Non-blocking async wrapper around call_llm. Offloads the sync HTTP call via asyncio.to_thread.
+    Returns (text, elapsed_seconds, model_used)."""
     import asyncio
     return await asyncio.to_thread(
         call_llm, prompt, temperature, max_tokens, system_msg, feature

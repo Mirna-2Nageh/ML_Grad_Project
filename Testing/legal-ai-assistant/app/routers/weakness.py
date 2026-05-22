@@ -30,8 +30,8 @@ async def detect_weakness(req: WeaknessRequest):
         case_facts=req.case_facts,
         legal_refs=legal_refs,
     )
-    analysis, _ = await async_call_llm(
-        prompt, feature="weakness", system_msg=SYSTEM_MESSAGES["weakness"], max_tokens=1500,
+    analysis, _, model_used = await async_call_llm(
+        prompt, feature="weakness", system_msg=SYSTEM_MESSAGES["weakness"], max_tokens=2048,
     )
 
     article_pass, missing = validate_evidence(analysis, contexts)
@@ -62,5 +62,5 @@ async def detect_weakness(req: WeaknessRequest):
         warnings=warnings,
         conflicts_detected=False,
         latency_ms=round((time.time() - t0) * 1000, 1),
-        model=config.LLM_MODEL,
+        model=model_used,
     )

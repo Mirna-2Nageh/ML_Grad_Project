@@ -19,16 +19,16 @@ async def summarize_text(req: SummarizeRequest):
     t0 = time.time()
 
     prompt = PROMPTS["summarize"].format(text=req.text[:config.MAX_INPUT_CHARS])
-    summary, _ = await async_call_llm(
+    summary, _, model_used = await async_call_llm(
         prompt,
         feature="summarize",
         system_msg=SYSTEM_MESSAGES["summarize"],
-        max_tokens=1024,
+        max_tokens=2048,
     )
 
     return SummarizeResponse(
         summary=summary,
         input_length=len(req.text),
         latency_ms=round((time.time() - t0) * 1000, 1),
-        model=config.LLM_MODEL,
+        model=model_used,
     )

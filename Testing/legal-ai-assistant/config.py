@@ -18,6 +18,9 @@ EMBED_PROVIDER = os.getenv("EMBED_PROVIDER", "google") # 'google' or 'openai' (O
 # Model Configuration
 # ──────────────────────────────────────────────
 LLM_MODEL = os.getenv("LLM_MODEL", "qwen/qwen-2.5-72b-instruct")
+# Cap Gemini 2.5 Flash's hidden thinking tokens. Unbounded (default) thinking
+# eats max_output_tokens and truncates the visible answer mid-sentence.
+GEMINI_THINKING_BUDGET = int(os.getenv("GEMINI_THINKING_BUDGET", "512"))
 EMBED_MODEL_NAME = os.getenv("EMBED_MODEL", "BAAI/bge-m3")
 USE_REMOTE_EMBEDDINGS = os.getenv("USE_REMOTE_EMBEDDINGS", "False").lower() == "true"
 EMBED_DIMENSIONS = int(os.getenv("EMBED_DIMENSIONS", "1024")) # 1024 for BGE-M3

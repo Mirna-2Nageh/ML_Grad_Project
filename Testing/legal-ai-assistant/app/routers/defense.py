@@ -31,7 +31,7 @@ async def generate_defense(req: DefenseRequest):
         weaknesses=req.weaknesses or "لم يتم تحديد نقاط ضعف محددة",
         legal_refs=legal_refs,
     )
-    memorandum, _ = await async_call_llm(
+    memorandum, _, model_used = await async_call_llm(
         prompt, feature="defense", system_msg=SYSTEM_MESSAGES["defense"], max_tokens=2048,
     )
 
@@ -63,5 +63,5 @@ async def generate_defense(req: DefenseRequest):
         warnings=warnings,
         conflicts_detected=False,
         latency_ms=round((time.time() - t0) * 1000, 1),
-        model=config.LLM_MODEL,
+        model=model_used,
     )
