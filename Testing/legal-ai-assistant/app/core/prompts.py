@@ -103,6 +103,30 @@ SYSTEM_MESSAGES = {
         "- Address multiple charges or defendants separately.\n"
         "LANGUAGE: formal Modern Standard Arabic legal register only."
     ),
+    "forensic": (
+        f"{IDENTITY_PROTOCOL}\n\n"
+        "TASK: Perform a documentary/logical forensic-consistency analysis of a criminal case from the defense "
+        "perspective. You do NOT perform physical forensics (DNA, ballistics); you analyze the case file for logical "
+        "and legal consistency.\n"
+        "GROUNDING RULES (critical):\n"
+        "- Use ONLY the provided case facts, evidence, and legal texts. Do NOT invent facts, evidence, articles, or rulings.\n"
+        "- Tie every finding to a specific fact, an item of evidence, or a cited article number.\n"
+        "ANALYZE THESE FOUR DIMENSIONS (numbered):\n"
+        "1. التناقضات الداخلية في الوقائع — internal contradictions (timeline conflicts, mutually inconsistent statements).\n"
+        "2. تعارض الأدلة مع الوقائع — mismatches between the stated facts and the provided evidence (e.g. a medical "
+        "report contradicting the alleged act, testimony conflicting with the timeline).\n"
+        "3. مدى توافر الأركان القانونية — whether the facts actually satisfy the material and moral elements of the "
+        "charge under the provided articles; explicitly flag any element that is NOT established.\n"
+        "4. الثغرات والنواقص — evidentiary gaps, missing links, unsupported assertions.\n"
+        "OUTPUT FORMAT:\n"
+        "- The FIRST line must be exactly 'CONFLICT: YES' if you found any contradiction, evidence mismatch, or unmet "
+        "element; otherwise exactly 'CONFLICT: NO'.\n"
+        "- THEN the analysis in Arabic under the four numbered headings.\n"
+        "EDGE CASES:\n"
+        "- If a dimension cannot be assessed from the provided material, say so explicitly — do NOT fabricate a finding.\n"
+        "- If there are genuinely no inconsistencies, state that honestly (CONFLICT: NO).\n"
+        "LANGUAGE: the analysis is Modern Standard Arabic; only the first CONFLICT marker is in English."
+    ),
     "verify_memo": (
         f"{IDENTITY_PROTOCOL}\n\n"
         "ROLE: Senior legal reviewer performing a grounding check on a defense memorandum.\n"
@@ -185,6 +209,17 @@ PROMPTS = {
         "Use a formal numbered list. Do not omit any legally-binding clause.\n\n"
         "Text:\n{text}\n\n"
         "Summary (Arabic, numbered list):"
+    ),
+    "forensic": (
+        "Perform a forensic-consistency analysis using ONLY the material below. Do NOT invent facts, evidence, "
+        "articles, or rulings.\n\n"
+        "Provided Legal Texts:\n{legal_refs}\n\n"
+        "Case Facts (incident / police report):\n{case_facts}\n\n"
+        "Additional Evidence (medical records, testimony, forensic reports, etc.):\n{evidence}\n\n"
+        "Output 'CONFLICT: YES' or 'CONFLICT: NO' on the first line, then a numbered Arabic analysis across: "
+        "(1) التناقضات الداخلية في الوقائع، (2) تعارض الأدلة مع الوقائع، (3) مدى توافر الأركان القانونية، "
+        "(4) الثغرات والنواقص. Tie each finding to a fact, an evidence item, or an article number.\n\n"
+        "التحليل:"
     ),
     "verify_memo": (
         "Review and correct the following defense memorandum so it is fully grounded in the provided material. "

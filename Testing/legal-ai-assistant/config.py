@@ -52,6 +52,7 @@ GROQ_MODEL_STRONG = os.getenv("GROQ_MODEL_STRONG", "llama-3.3-70b-versatile")
 MODEL_BY_FEATURE = {
     "defense": GROQ_MODEL_STRONG,
     "weakness": GROQ_MODEL_STRONG,
+    "forensic": GROQ_MODEL_STRONG,  # consistency analysis is reasoning-heavy
     "summarize": GROQ_MODEL,
     "qa": GROQ_MODEL,
     "default": GROQ_MODEL,

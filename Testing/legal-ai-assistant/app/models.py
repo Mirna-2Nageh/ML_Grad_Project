@@ -49,6 +49,16 @@ class DefenseRequest(BaseModel):
     }}
 
 
+class ForensicRequest(BaseModel):
+    """Forensic-consistency analysis request: cross-references facts + evidence against the law."""
+    case_facts: str = Field(..., description="Case facts / incident or police report (Arabic)", min_length=20, max_length=10000)
+    evidence: str = Field(default="", description="Additional evidence text (medical records, testimony, forensic reports). Will be sourced from the per-case evidence store once uploads land.", max_length=15000)
+
+    model_config = {"json_schema_extra": {
+        "examples": [{"case_facts": "ضُبط المتهم ليلاً وبحوزته سلاح.", "evidence": "التقرير الطبي: لا توجد إصابات على المجني عليه."}]
+    }}
+
+
 # ──────────────────────────────────────────────
 # Source Attribution & Confidence
 # ──────────────────────────────────────────────
@@ -123,6 +133,18 @@ class DefenseResponse(BaseModel):
     latency_ms: float = Field(..., description="Total response time in milliseconds")
     model: str = Field(default="", description="LLM model used")
     self_check_revisions: int = Field(default=0, description="Number of agentic self-check revision passes applied to the memo")
+
+
+class ForensicResponse(BaseModel):
+    """Forensic-consistency analysis response."""
+    analysis: str = Field(..., description="Consistency analysis in Arabic (contradictions, evidence mismatches, unmet legal elements, gaps)")
+    conflicts_detected: bool = Field(default=False, description="True if any contradiction / evidence mismatch / unmet element was found")
+    confidence_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    confidence_factors: ConfidenceFactors = Field(default_factory=ConfidenceFactors)
+    sources: List[SourceInfo] = Field(default_factory=list, description="Legal references used")
+    warnings: List[str] = Field(default_factory=list)
+    latency_ms: float = Field(..., description="Total response time in milliseconds")
+    model: str = Field(default="", description="LLM model used")
 
 
 class HealthResponse(BaseModel):

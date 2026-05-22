@@ -10,7 +10,7 @@ import config
 from app.services.retrieval import retrieval_service
 from app.services.reranker import reranker_service
 from app.services.session import session_manager
-from app.routers import qa, summarize, weakness, defense, health, chat, ingest
+from app.routers import qa, summarize, weakness, defense, health, chat, ingest, forensic
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(name)s | %(levelname)s | %(message)s")
 logger = logging.getLogger(__name__)
@@ -80,6 +80,7 @@ app.include_router(qa.router,        prefix=API_PREFIX, tags=["Q&A"])
 app.include_router(summarize.router, prefix=API_PREFIX, tags=["Summarization"])
 app.include_router(weakness.router,  prefix=API_PREFIX, tags=["Weakness Detection"])
 app.include_router(defense.router,   prefix=API_PREFIX, tags=["Defense Memo"])
+app.include_router(forensic.router,  prefix=API_PREFIX, tags=["Forensic Analysis"])
 app.include_router(ingest.router,    prefix=API_PREFIX, tags=["Data Ingestion"])
 
 
