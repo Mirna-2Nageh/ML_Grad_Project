@@ -145,25 +145,50 @@ def get_groq_async_client() -> AsyncOpenAI:
     return _groq_async_client
 
 
-def _try_openai_chat(client, model, prompt, system_msg, temp, max_tokens, label, retries=2):
-    """Call any OpenAI-compatible chat endpoint (xAI / OpenRouter). Returns text or None."""
+# Cache OpenAI-compatible clients by (base_url, key) so multi-key rotation reuses connections.
+_oai_client_cache: dict = {}
+
+
+def _client_for(base_url: str, key: str) -> OpenAI:
+    ck = (base_url, key)
+    if ck not in _oai_client_cache:
+        _oai_client_cache[ck] = OpenAI(base_url=base_url, api_key=key)
+    return _oai_client_cache[ck]
+
+
+def _is_rate_limited(err: Exception) -> bool:
+    """True for limit/quota errors where rotating to a different key is worth trying."""
+    s = str(err).lower()
+    return any(m in s for m in (
+        "429", "413", "rate limit", "rate_limit", "too large",
+        "quota", "tokens per", "insufficient_quota",
+    ))
+
+
+def _try_openai_chat(base_url, keys, model, prompt, system_msg, temp, max_tokens, label, retries=2):
+    """Call an OpenAI-compatible endpoint (Groq/xAI/OpenRouter), rotating across `keys`
+    on rate-limit/quota errors. Returns text or None."""
     messages = []
     if system_msg:
         messages.append({"role": "system", "content": system_msg})
     messages.append({"role": "user", "content": prompt})
-    for attempt in range(retries):
-        try:
-            resp = client.chat.completions.create(
-                model=model, messages=messages, temperature=temp, max_tokens=max_tokens,
-            )
-            text = (resp.choices[0].message.content or "").strip()
-            text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
-            if text:
-                return text
-            logger.warning(f"{label} returned empty content (attempt {attempt+1})")
-        except Exception as e:
-            logger.warning(f"{label} attempt {attempt+1} failed: {e}")
-            time.sleep(1)
+    for ki, key in enumerate(keys):
+        client = _client_for(base_url, key)
+        for attempt in range(retries):
+            try:
+                resp = client.chat.completions.create(
+                    model=model, messages=messages, temperature=temp, max_tokens=max_tokens,
+                )
+                text = (resp.choices[0].message.content or "").strip()
+                text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+                if text:
+                    return text
+                logger.warning(f"{label} key#{ki+1} returned empty content (attempt {attempt+1})")
+            except Exception as e:
+                logger.warning(f"{label} key#{ki+1}/{len(keys)} attempt {attempt+1} failed: {e}")
+                if _is_rate_limited(e):
+                    break  # rotate to next key immediately — retrying the same key won't help
+                time.sleep(1)
     return None
 
 
@@ -229,21 +254,25 @@ def call_llm(
 
     t0 = time.time()
 
-    # Build the ordered provider chain. The configured primary is tried first;
-    # Gemini and OpenRouter remain as backups when their keys are configured.
-    if config.LLM_PROVIDER == "xai" and config.XAI_API_KEY:
+    # Build the ordered provider chain. The configured primary is tried first (rotating
+    # across its key list on rate-limit); Gemini and OpenRouter remain as backups.
+    if config.LLM_PROVIDER == "xai" and config.XAI_API_KEYS:
         text = _try_openai_chat(
-            get_xai_client(), config.XAI_MODEL, prompt, system_msg, temp, max_tokens, "xAI-Grok",
+            config.XAI_BASE_URL, config.XAI_API_KEYS, config.XAI_MODEL,
+            prompt, system_msg, temp, max_tokens, "xAI-Grok",
         )
         if text:
             return text, time.time() - t0, config.XAI_MODEL
 
-    if config.LLM_PROVIDER == "groq" and config.GROQ_API_KEY:
+    if config.LLM_PROVIDER == "groq" and config.GROQ_API_KEYS:
+        # Per-feature routing: defense/weakness -> strong model, others -> default.
+        groq_model = config.MODEL_BY_FEATURE.get(feature, config.GROQ_MODEL)
         text = _try_openai_chat(
-            get_groq_client(), config.GROQ_MODEL, prompt, system_msg, temp, max_tokens, "Groq",
+            config.GROQ_BASE_URL, config.GROQ_API_KEYS, groq_model,
+            prompt, system_msg, temp, max_tokens, "Groq",
         )
         if text:
-            return text, time.time() - t0, config.GROQ_MODEL
+            return text, time.time() - t0, groq_model
 
     # Gemini (primary when LLM_PROVIDER=="gemini", else backup).
     gemini_res = _try_gemini(prompt, system_msg, temp, max_tokens)
@@ -252,9 +281,10 @@ def call_llm(
         return text, time.time() - t0, model
 
     # OpenRouter (last-resort backup).
-    if config.OPENROUTER_API_KEY:
+    if config.OPENROUTER_API_KEYS:
         text = _try_openai_chat(
-            get_client(), config.LLM_MODEL, prompt, system_msg, temp, max_tokens, "OpenRouter",
+            config.OPENROUTER_BASE_URL, config.OPENROUTER_API_KEYS, config.LLM_MODEL,
+            prompt, system_msg, temp, max_tokens, "OpenRouter",
         )
         if text:
             return text, time.time() - t0, config.LLM_MODEL

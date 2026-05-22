@@ -10,7 +10,20 @@ load_dotenv()
 # ──────────────────────────────────────────────
 # API Keys
 # ──────────────────────────────────────────────
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+def _key_list(*env_names):
+    """Collect API keys from one or more env vars, each possibly comma-separated.
+    Enables multi-key rotation: set e.g. GROQ_API_KEYS=k1,k2,k3 (or repeat in GROQ_API_KEY)."""
+    keys = []
+    for name in env_names:
+        for k in os.getenv(name, "").split(","):
+            k = k.strip()
+            if k and k not in keys:
+                keys.append(k)
+    return keys
+
+
+OPENROUTER_API_KEYS = _key_list("OPENROUTER_API_KEY", "OPENROUTER_API_KEYS")
+OPENROUTER_API_KEY = OPENROUTER_API_KEYS[0] if OPENROUTER_API_KEYS else ""  # back-compat (first key)
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
 EMBED_PROVIDER = os.getenv("EMBED_PROVIDER", "google") # 'google' or 'openai' (OpenRouter)
 
@@ -23,14 +36,26 @@ LLM_PROVIDER = os.getenv("LLM_PROVIDER", "gemini").lower()
 LLM_MODEL = os.getenv("LLM_MODEL", "qwen/qwen-2.5-72b-instruct")  # OpenRouter fallback model
 
 # xAI Grok (OpenAI-compatible API at https://api.x.ai/v1)
-XAI_API_KEY = os.getenv("XAI_API_KEY", "")
+XAI_API_KEYS = _key_list("XAI_API_KEY", "XAI_API_KEYS")
+XAI_API_KEY = XAI_API_KEYS[0] if XAI_API_KEYS else ""  # back-compat
 XAI_BASE_URL = os.getenv("XAI_BASE_URL", "https://api.x.ai/v1")
 XAI_MODEL = os.getenv("XAI_MODEL", "grok-4.1-fast")  # verify exact id via GET /v1/models
 
 # Groq (free tier, OpenAI-compatible API at https://api.groq.com/openai/v1)
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+GROQ_API_KEYS = _key_list("GROQ_API_KEY", "GROQ_API_KEYS")
+GROQ_API_KEY = GROQ_API_KEYS[0] if GROQ_API_KEYS else ""  # back-compat
 GROQ_BASE_URL = os.getenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1")
-GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")  # verify exact id via GET /models
+GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")  # default model
+# Per-feature model routing: heavy reasoning (defense memo, weakness analysis) gets the
+# strong model; high-volume QA/chat can use a cheaper/faster one. Falls back to GROQ_MODEL.
+GROQ_MODEL_STRONG = os.getenv("GROQ_MODEL_STRONG", "llama-3.3-70b-versatile")
+MODEL_BY_FEATURE = {
+    "defense": GROQ_MODEL_STRONG,
+    "weakness": GROQ_MODEL_STRONG,
+    "summarize": GROQ_MODEL,
+    "qa": GROQ_MODEL,
+    "default": GROQ_MODEL,
+}
 # Cap Gemini 2.5 Flash's hidden thinking tokens. Unbounded (default) thinking
 # eats max_output_tokens and truncates the visible answer mid-sentence.
 GEMINI_THINKING_BUDGET = int(os.getenv("GEMINI_THINKING_BUDGET", "512"))
