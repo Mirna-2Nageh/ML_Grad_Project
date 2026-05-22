@@ -13,7 +13,7 @@ from app.models import (
     ChatRequest, ChatResponse, SourceInfo, ConfidenceFactors, SessionInfoResponse,
 )
 from app.services.retrieval import retrieval_service
-from app.services.llm import async_call_llm, async_stream_llm
+from app.services.llm import async_call_llm, async_stream_llm, used_fallback, FALLBACK_NOTICE_AR
 from app.services.session import session_manager
 from app.services.confidence import validate_evidence, topic_match, compute_confidence
 from app.core.prompts import PROMPTS, SYSTEM_MESSAGES
@@ -86,6 +86,8 @@ async def chat(req: ChatRequest):
         confidence = max(0.0, round(confidence - 0.3, 3))
     if confidence < config.CONFIDENCE_THRESHOLD_CLARIFY:
         warnings.append("ثقة الإجابة منخفضة — هل يمكنك توضيح السؤال أكثر؟")
+    if used_fallback(model_used):
+        warnings.append(FALLBACK_NOTICE_AR)
 
     total_ms = (time.time() - t0) * 1000
     return ChatResponse(

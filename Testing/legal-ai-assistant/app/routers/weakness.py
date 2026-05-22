@@ -7,7 +7,7 @@ from app.models import (
     WeaknessRequest, WeaknessResponse, SourceInfo, ConfidenceFactors,
 )
 from app.services.retrieval import retrieval_service
-from app.services.llm import async_call_llm
+from app.services.llm import async_call_llm, used_fallback, FALLBACK_NOTICE_AR
 from app.services.confidence import validate_evidence, topic_match, compute_confidence
 from app.core.prompts import PROMPTS, SYSTEM_MESSAGES
 
@@ -53,6 +53,8 @@ async def detect_weakness(req: WeaknessRequest):
         confidence = max(0.0, round(confidence - 0.3, 3))
     if confidence < config.CONFIDENCE_THRESHOLD_CLARIFY:
         warnings.append("ثقة التحليل منخفضة — يُنصح بإضافة مزيد من تفاصيل القضية.")
+    if used_fallback(model_used):
+        warnings.append(FALLBACK_NOTICE_AR)
 
     return WeaknessResponse(
         analysis=analysis,

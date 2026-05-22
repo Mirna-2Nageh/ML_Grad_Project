@@ -15,6 +15,18 @@ _client: Optional[OpenAI] = None
 _async_client: Optional[AsyncOpenAI] = None
 
 
+# User-facing note appended when Gemini was the configured primary but the
+# answer came from the OpenRouter fallback (quota/availability).
+FALLBACK_NOTICE_AR = (
+    "ملاحظة: تعذّر الوصول إلى نموذج Gemini مؤقتًا، وتم توليد الإجابة بالنموذج الاحتياطي (Qwen)."
+)
+
+
+def used_fallback(model_used: str) -> bool:
+    """True if Gemini was the configured primary but the OpenRouter fallback answered."""
+    return bool(config.GOOGLE_API_KEY) and model_used == config.LLM_MODEL
+
+
 def get_client() -> OpenAI:
     """Get or create the synchronous OpenRouter client."""
     global _client

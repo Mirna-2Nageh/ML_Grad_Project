@@ -7,7 +7,7 @@ from app.models import (
     QARequest, QAResponse, SourceInfo, ConfidenceFactors, ErrorResponse,
 )
 from app.services.retrieval import retrieval_service
-from app.services.llm import async_call_llm
+from app.services.llm import async_call_llm, used_fallback, FALLBACK_NOTICE_AR
 from app.services.confidence import validate_evidence, topic_match, compute_confidence
 from app.core.prompts import PROMPTS, SYSTEM_MESSAGES
 
@@ -59,6 +59,8 @@ async def legal_qa(req: QARequest):
         confidence = max(0.0, round(confidence - 0.3, 3))
     if confidence < config.CONFIDENCE_THRESHOLD_CLARIFY:
         warnings.append("ثقة الإجابة منخفضة — يُنصح بإعادة صياغة السؤال بمزيد من التفصيل أو إضافة سياق إضافي.")
+    if used_fallback(model_used):
+        warnings.append(FALLBACK_NOTICE_AR)
 
     total_ms = (time.time() - t0) * 1000
     return QAResponse(
