@@ -224,22 +224,38 @@ class SessionManager:
         return summary
 
     async def delete_session(self, session_id: str) -> bool:
+        """Delete a session from BOTH memory and disk. Returns True if anything existed."""
         async with self._lock:
-            if session_id not in self._sessions:
-                return False
-            del self._sessions[session_id]
+            in_memory = session_id in self._sessions
+            if in_memory:
+                del self._sessions[session_id]
+            on_disk = False
             try:
                 path = self._session_path(session_id)
                 if os.path.exists(path):
                     os.remove(path)
+                    on_disk = True
             except Exception as e:
                 logger.warning(f"Failed to remove session file {session_id}: {e}")
-            logger.info(f"🗑️ Session deleted: {session_id}")
-            return True
+            deleted = in_memory or on_disk
+            if deleted:
+                logger.info(f"🗑️ Session deleted: {session_id} (memory={in_memory}, disk={on_disk})")
+            return deleted
 
     async def get_session_info(self, session_id: str) -> Optional[dict]:
         async with self._lock:
             session = self._sessions.get(session_id)
+            # Lazy-load from disk if not in memory (e.g., file restored after startup).
+            if not session and config.SESSION_PERSIST:
+                path = self._session_path(session_id)
+                if os.path.exists(path):
+                    try:
+                        with open(path, "r", encoding="utf-8") as f:
+                            session = Session.from_dict(json.load(f))
+                        self._sessions[session_id] = session
+                    except Exception as e:
+                        logger.warning(f"Failed to lazy-load session {session_id}: {e}")
+                        session = None
             if not session:
                 return None
             return {
