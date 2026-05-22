@@ -17,10 +17,27 @@ EMBED_PROVIDER = os.getenv("EMBED_PROVIDER", "google") # 'google' or 'openai' (O
 # ──────────────────────────────────────────────
 # Model Configuration
 # ──────────────────────────────────────────────
-LLM_MODEL = os.getenv("LLM_MODEL", "qwen/qwen-2.5-72b-instruct")
+# Primary LLM provider: "gemini" | "xai" | "groq" (all OpenAI-compatible except gemini).
+# The chosen primary is tried first, then Gemini (if GOOGLE_API_KEY set), then OpenRouter.
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "gemini").lower()
+LLM_MODEL = os.getenv("LLM_MODEL", "qwen/qwen-2.5-72b-instruct")  # OpenRouter fallback model
+
+# xAI Grok (OpenAI-compatible API at https://api.x.ai/v1)
+XAI_API_KEY = os.getenv("XAI_API_KEY", "")
+XAI_BASE_URL = os.getenv("XAI_BASE_URL", "https://api.x.ai/v1")
+XAI_MODEL = os.getenv("XAI_MODEL", "grok-4.1-fast")  # verify exact id via GET /v1/models
+
+# Groq (free tier, OpenAI-compatible API at https://api.groq.com/openai/v1)
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+GROQ_BASE_URL = os.getenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")  # verify exact id via GET /models
 # Cap Gemini 2.5 Flash's hidden thinking tokens. Unbounded (default) thinking
 # eats max_output_tokens and truncates the visible answer mid-sentence.
 GEMINI_THINKING_BUDGET = int(os.getenv("GEMINI_THINKING_BUDGET", "512"))
+# Retry transient Gemini failures (503 overloaded / 429 rate-limited) per model tier
+# with exponential backoff before falling through to the next tier / OpenRouter.
+GEMINI_MAX_RETRIES = int(os.getenv("GEMINI_MAX_RETRIES", "3"))
+GEMINI_RETRY_BASE_DELAY = float(os.getenv("GEMINI_RETRY_BASE_DELAY", "2.0"))  # seconds; doubles each retry
 EMBED_MODEL_NAME = os.getenv("EMBED_MODEL", "BAAI/bge-m3")
 USE_REMOTE_EMBEDDINGS = os.getenv("USE_REMOTE_EMBEDDINGS", "False").lower() == "true"
 EMBED_DIMENSIONS = int(os.getenv("EMBED_DIMENSIONS", "1024")) # 1024 for BGE-M3
@@ -132,5 +149,10 @@ BENCHMARK_MODELS = {
 # ──────────────────────────────────────────────
 # API Limits
 # ──────────────────────────────────────────────
-MAX_CONTEXT_CHARS = 8000
+# Context budget: trimmed so a full request (input + output reservation) fits free-tier
+# token-per-minute caps (e.g. Groq 8B TPM=6000). Expert rules + top chunks still fit.
+MAX_CONTEXT_CHARS = 4500
 MAX_INPUT_CHARS = 50000
+# Output token cap for short-answer features (QA/chat). Answers are typically 200-800 chars,
+# so a 4096 reservation needlessly doubled per-request token cost on free tiers.
+LLM_MAX_TOKENS_QA = int(os.getenv("LLM_MAX_TOKENS_QA", "1024"))

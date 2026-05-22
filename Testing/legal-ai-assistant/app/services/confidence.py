@@ -13,15 +13,15 @@ logger = logging.getLogger(__name__)
 
 
 def validate_evidence(answer: str, contexts: List[str]) -> Tuple[bool, List[str]]:
-    """Check every article cited in `answer` appears in `contexts`. Returns (passed, missing_articles)."""
+    """Check every article cited in `answer` appears in `contexts`. Returns (passed, missing_articles).
+
+    Both sides use the same extractor so plural/list article forms ("المواد 211، 212، 213",
+    "المواد: 315") are matched symmetrically — avoids false 'uncited article' flags."""
     cited = extract_article_references(answer)
     if not cited:
         return True, []
-    blob = normalize_arabic_indic_digits(" ".join(contexts))
-    missing = [
-        art for art in cited
-        if not re.search(rf"(?:المادة|مادة)\s+{art}\b", blob)
-    ]
+    context_articles = set(extract_article_references(" ".join(contexts)))
+    missing = [art for art in cited if art not in context_articles]
     return len(missing) == 0, missing
 
 

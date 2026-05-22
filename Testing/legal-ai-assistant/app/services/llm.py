@@ -1,8 +1,13 @@
 """
-OpenRouter LLM client (OpenAI-compatible). Uses Qwen via OpenRouter by default,
-with Google Gemini as the primary path when GOOGLE_API_KEY is set.
+Multi-provider LLM client. Primary provider is config.LLM_PROVIDER:
+  - "gemini": Google Gemini (native API) → OpenRouter fallback.
+  - "xai":    Grok via xAI (OpenAI-compatible) → Gemini → OpenRouter.
+  - "groq":   Groq free tier (OpenAI-compatible) → Gemini → OpenRouter.
+All OpenAI-compatible providers (xAI, Groq, OpenRouter) share one chat helper.
 """
+import re
 import time
+import random
 import logging
 from typing import AsyncGenerator, Optional, Tuple
 from openai import OpenAI, AsyncOpenAI
@@ -10,21 +15,66 @@ import config
 
 logger = logging.getLogger(__name__)
 
+
+def _is_transient_gemini_error(err: Exception) -> bool:
+    """True for Gemini failures worth retrying: overloaded (503) or per-minute
+    rate-limit spikes (429). A *daily* quota exhaustion (PerDay) is NOT transient —
+    it won't recover for hours, so retrying just wastes the remaining budget."""
+    s = str(err).lower()
+    if "perday" in s or "requestsperdayper" in s:
+        return False
+    markers = ("429", "503", "resource_exhausted", "unavailable",
+               "overloaded", "rate limit", "deadline", "timeout")
+    return any(m in s for m in markers)
+
 # ── Singleton clients (sync + async) ──
 _client: Optional[OpenAI] = None
 _async_client: Optional[AsyncOpenAI] = None
+_xai_client: Optional[OpenAI] = None
+_xai_async_client: Optional[AsyncOpenAI] = None
+_groq_client: Optional[OpenAI] = None
+_groq_async_client: Optional[AsyncOpenAI] = None
 
 
-# User-facing note appended when Gemini was the configured primary but the
-# answer came from the OpenRouter fallback (quota/availability).
+# User-facing note appended when the configured primary model was unavailable and
+# the answer came from a backup provider (quota/availability).
 FALLBACK_NOTICE_AR = (
-    "ملاحظة: تعذّر الوصول إلى نموذج Gemini مؤقتًا، وتم توليد الإجابة بالنموذج الاحتياطي (Qwen)."
+    "ملاحظة: تعذّر الوصول إلى النموذج الأساسي مؤقتًا، وتم توليد الإجابة بنموذج احتياطي."
 )
 
 
+def primary_model() -> str:
+    """The model name the system prefers, given the configured provider."""
+    if config.LLM_PROVIDER == "xai" and config.XAI_API_KEY:
+        return config.XAI_MODEL
+    if config.LLM_PROVIDER == "groq" and config.GROQ_API_KEY:
+        return config.GROQ_MODEL
+    return "gemini-2.5-flash"
+
+# Sentinels returned by call_llm when every provider in the fallback chain failed.
+LLM_ERROR_MODEL = "error"
+LLM_ERROR_TEXT = "[ERROR: LLM Service Unavailable]"
+# User-facing message when no LLM provider could answer.
+LLM_ERROR_NOTICE_AR = (
+    "تعذّر توليد إجابة حالياً بسبب عدم توفر نموذج اللغة (انشغال أو تجاوز الحصة). "
+    "يرجى المحاولة مرة أخرى بعد قليل."
+)
+
+
+def is_llm_error(model_used: str) -> bool:
+    """True if call_llm exhausted every provider and returned the error sentinel."""
+    return model_used == LLM_ERROR_MODEL
+
+
 def used_fallback(model_used: str) -> bool:
-    """True if Gemini was the configured primary but the OpenRouter fallback answered."""
-    return bool(config.GOOGLE_API_KEY) and model_used == config.LLM_MODEL
+    """True if the answer came from a backup provider rather than the configured primary."""
+    if model_used == LLM_ERROR_MODEL:
+        return False
+    pm = primary_model()
+    # Any Gemini tier counts as "primary" when Gemini is the primary provider.
+    if pm.startswith("gemini") and model_used.startswith("gemini"):
+        return False
+    return model_used != pm
 
 
 def get_client() -> OpenAI:
@@ -55,6 +105,113 @@ def get_async_client() -> AsyncOpenAI:
     return _async_client
 
 
+def get_xai_client() -> OpenAI:
+    """Get or create the synchronous xAI (Grok) client."""
+    global _xai_client
+    if _xai_client is None:
+        if not config.XAI_API_KEY:
+            raise ValueError("XAI_API_KEY not set. Get a key at https://console.x.ai")
+        _xai_client = OpenAI(base_url=config.XAI_BASE_URL, api_key=config.XAI_API_KEY)
+    return _xai_client
+
+
+def get_xai_async_client() -> AsyncOpenAI:
+    """Get or create the async xAI (Grok) client (used by streaming endpoints)."""
+    global _xai_async_client
+    if _xai_async_client is None:
+        if not config.XAI_API_KEY:
+            raise ValueError("XAI_API_KEY not set.")
+        _xai_async_client = AsyncOpenAI(base_url=config.XAI_BASE_URL, api_key=config.XAI_API_KEY)
+    return _xai_async_client
+
+
+def get_groq_client() -> OpenAI:
+    """Get or create the synchronous Groq client."""
+    global _groq_client
+    if _groq_client is None:
+        if not config.GROQ_API_KEY:
+            raise ValueError("GROQ_API_KEY not set. Get a free key at https://console.groq.com")
+        _groq_client = OpenAI(base_url=config.GROQ_BASE_URL, api_key=config.GROQ_API_KEY)
+    return _groq_client
+
+
+def get_groq_async_client() -> AsyncOpenAI:
+    """Get or create the async Groq client (used by streaming endpoints)."""
+    global _groq_async_client
+    if _groq_async_client is None:
+        if not config.GROQ_API_KEY:
+            raise ValueError("GROQ_API_KEY not set.")
+        _groq_async_client = AsyncOpenAI(base_url=config.GROQ_BASE_URL, api_key=config.GROQ_API_KEY)
+    return _groq_async_client
+
+
+def _try_openai_chat(client, model, prompt, system_msg, temp, max_tokens, label, retries=2):
+    """Call any OpenAI-compatible chat endpoint (xAI / OpenRouter). Returns text or None."""
+    messages = []
+    if system_msg:
+        messages.append({"role": "system", "content": system_msg})
+    messages.append({"role": "user", "content": prompt})
+    for attempt in range(retries):
+        try:
+            resp = client.chat.completions.create(
+                model=model, messages=messages, temperature=temp, max_tokens=max_tokens,
+            )
+            text = (resp.choices[0].message.content or "").strip()
+            text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+            if text:
+                return text
+            logger.warning(f"{label} returned empty content (attempt {attempt+1})")
+        except Exception as e:
+            logger.warning(f"{label} attempt {attempt+1} failed: {e}")
+            time.sleep(1)
+    return None
+
+
+def _try_gemini(prompt, system_msg, temp, max_tokens):
+    """Try Gemini across model tiers with transient-error backoff. Returns (text, model) or None."""
+    if not config.GOOGLE_API_KEY:
+        return None
+    try:
+        from google import genai
+        from google.genai import types
+    except Exception as e:
+        logger.warning(f"google-genai import failed: {e}")
+        return None
+
+    client = genai.Client(api_key=config.GOOGLE_API_KEY)
+    full_prompt = f"{system_msg}\n\n{prompt}" if system_msg else prompt
+    gen_config = types.GenerateContentConfig(
+        temperature=temp,
+        max_output_tokens=max_tokens,
+        thinking_config=types.ThinkingConfig(thinking_budget=config.GEMINI_THINKING_BUDGET),
+    )
+    for model_id in ['models/gemini-2.5-flash', 'models/gemini-2.0-flash', 'models/gemini-2.0-flash-lite']:
+        for attempt in range(config.GEMINI_MAX_RETRIES):
+            try:
+                response = client.models.generate_content(
+                    model=model_id, contents=full_prompt, config=gen_config,
+                )
+                text = (response.text or "").strip()
+                if text:
+                    return text, model_id.split("/", 1)[-1]
+                logger.warning(f"{model_id} returned empty text; trying next tier")
+                break
+            except Exception as inner_e:
+                transient = _is_transient_gemini_error(inner_e)
+                last = attempt == config.GEMINI_MAX_RETRIES - 1
+                if transient and not last:
+                    delay = config.GEMINI_RETRY_BASE_DELAY * (2 ** attempt) + random.uniform(0, 1)
+                    logger.warning(
+                        f"{model_id} transient failure (attempt {attempt+1}/"
+                        f"{config.GEMINI_MAX_RETRIES}): {inner_e}. Retrying in {delay:.1f}s"
+                    )
+                    time.sleep(delay)
+                    continue
+                logger.warning(f"{model_id} failed (attempt {attempt+1}): {inner_e}")
+                break
+    return None
+
+
 def call_llm(
     prompt: str,
     temperature: float = None,
@@ -63,8 +220,8 @@ def call_llm(
     feature: str = "default",
 ) -> Tuple[str, float, str]:
     """
-    Call LLM via Gemini (Primary) or OpenRouter (Fallback).
-    Returns (text, elapsed_seconds, model_used).
+    Call the LLM provider chain ordered by config.LLM_PROVIDER.
+    Returns (text, elapsed_seconds, model_used). Falls through providers on failure.
     """
     temp = temperature if temperature is not None else config.TEMPERATURES.get(
         feature, config.TEMPERATURES["default"]
@@ -72,69 +229,37 @@ def call_llm(
 
     t0 = time.time()
 
-    # --- Try Google Gemini first (using modern native API) ---
-    if config.GOOGLE_API_KEY:
-        try:
-            from google import genai
-            from google.genai import types
+    # Build the ordered provider chain. The configured primary is tried first;
+    # Gemini and OpenRouter remain as backups when their keys are configured.
+    if config.LLM_PROVIDER == "xai" and config.XAI_API_KEY:
+        text = _try_openai_chat(
+            get_xai_client(), config.XAI_MODEL, prompt, system_msg, temp, max_tokens, "xAI-Grok",
+        )
+        if text:
+            return text, time.time() - t0, config.XAI_MODEL
 
-            client = genai.Client(api_key=config.GOOGLE_API_KEY)
+    if config.LLM_PROVIDER == "groq" and config.GROQ_API_KEY:
+        text = _try_openai_chat(
+            get_groq_client(), config.GROQ_MODEL, prompt, system_msg, temp, max_tokens, "Groq",
+        )
+        if text:
+            return text, time.time() - t0, config.GROQ_MODEL
 
-            # Combine system msg and prompt for Gemini
-            full_prompt = f"{system_msg}\n\n{prompt}" if system_msg else prompt
+    # Gemini (primary when LLM_PROVIDER=="gemini", else backup).
+    gemini_res = _try_gemini(prompt, system_msg, temp, max_tokens)
+    if gemini_res:
+        text, model = gemini_res
+        return text, time.time() - t0, model
 
-            # Try a loop of model names
-            for model_id in ['models/gemini-2.5-flash', 'models/gemini-2.0-flash', 'models/gemini-2.0-flash-lite']:
-                try:
-                    response = client.models.generate_content(
-                        model=model_id,
-                        contents=full_prompt,
-                        config=types.GenerateContentConfig(
-                            temperature=temp,
-                            max_output_tokens=max_tokens,
-                            # Cap hidden "thinking" tokens so they don't consume the
-                            # output budget and truncate the visible answer (2.5 Flash
-                            # defaults to unbounded dynamic thinking).
-                            thinking_config=types.ThinkingConfig(
-                                thinking_budget=config.GEMINI_THINKING_BUDGET
-                            ),
-                        )
-                    )
-                    text = response.text.strip()
-                    if text:
-                        return text, time.time() - t0, model_id.split("/", 1)[-1]
-                except Exception as inner_e:
-                    logger.warning(f"Attempt with {model_id} failed: {inner_e}")
-                    continue
-
-        except Exception as e:
-            logger.warning(f"Native Gemini call failed: {e}. Falling back to OpenRouter...")
-
-    # --- Fallback to OpenRouter ---
-    client = get_client()
-    messages = []
-    if system_msg:
-        messages.append({"role": "system", "content": system_msg})
-    messages.append({"role": "user", "content": prompt})
-
-    max_retries = 2
-    for attempt in range(max_retries):
-        try:
-            response = client.chat.completions.create(
-                model=config.LLM_MODEL,
-                messages=messages,
-                temperature=temp,
-                max_tokens=max_tokens,
-            )
-            text = response.choices[0].message.content.strip()
-            import re
-            text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL).strip()
+    # OpenRouter (last-resort backup).
+    if config.OPENROUTER_API_KEY:
+        text = _try_openai_chat(
+            get_client(), config.LLM_MODEL, prompt, system_msg, temp, max_tokens, "OpenRouter",
+        )
+        if text:
             return text, time.time() - t0, config.LLM_MODEL
-        except Exception as e:
-            logger.warning(f"OpenRouter attempt {attempt+1} failed: {e}")
-            time.sleep(1)
 
-    return "[ERROR: LLM Service Unavailable]", time.time() - t0, "error"
+    return LLM_ERROR_TEXT, time.time() - t0, LLM_ERROR_MODEL
 
 
 async def async_call_llm(
@@ -160,22 +285,30 @@ async def async_stream_llm(
     feature: str = "default",
     model: Optional[str] = None,
 ) -> AsyncGenerator[str, None]:
-    """Async generator yielding LLM output chunks. OpenRouter-only (no Gemini fallback yet).
+    """Async generator yielding LLM output chunks from an OpenAI-compatible provider.
 
-    Gemini's native streaming API differs enough that we skip it here — the streaming endpoint
-    is OpenRouter-Qwen-only. Non-streaming endpoints retain the Gemini-first fallback chain.
+    Uses xAI Grok when LLM_PROVIDER=="xai", else OpenRouter. Gemini's native streaming
+    API differs and is not wired here; non-streaming endpoints retain the full fallback chain.
     """
     temp = temperature if temperature is not None else config.TEMPERATURES.get(
         feature, config.TEMPERATURES["default"]
     )
-    client = get_async_client()
+    if config.LLM_PROVIDER == "xai" and config.XAI_API_KEY:
+        client = get_xai_async_client()
+        stream_model = model or config.XAI_MODEL
+    elif config.LLM_PROVIDER == "groq" and config.GROQ_API_KEY:
+        client = get_groq_async_client()
+        stream_model = model or config.GROQ_MODEL
+    else:
+        client = get_async_client()
+        stream_model = model or config.LLM_MODEL
     messages = []
     if system_msg:
         messages.append({"role": "system", "content": system_msg})
     messages.append({"role": "user", "content": prompt})
 
     stream = await client.chat.completions.create(
-        model=model or config.LLM_MODEL,
+        model=stream_model,
         messages=messages,
         temperature=temp,
         max_tokens=max_tokens,

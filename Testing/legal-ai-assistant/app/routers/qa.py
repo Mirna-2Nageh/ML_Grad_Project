@@ -7,7 +7,9 @@ from app.models import (
     QARequest, QAResponse, SourceInfo, ConfidenceFactors, ErrorResponse,
 )
 from app.services.retrieval import retrieval_service
-from app.services.llm import async_call_llm, used_fallback, FALLBACK_NOTICE_AR
+from app.services.llm import (
+    async_call_llm, used_fallback, is_llm_error, FALLBACK_NOTICE_AR, LLM_ERROR_NOTICE_AR,
+)
 from app.services.confidence import validate_evidence, topic_match, compute_confidence
 from app.core.prompts import PROMPTS, SYSTEM_MESSAGES
 
@@ -36,7 +38,13 @@ async def legal_qa(req: QARequest):
 
     answer, _, model_used = await async_call_llm(
         prompt, feature="qa", system_msg=SYSTEM_MESSAGES["qa"],
+        max_tokens=config.LLM_MAX_TOKENS_QA,
     )
+
+    # If every LLM provider failed, surface a 503 rather than scoring the error
+    # sentinel as a confident answer.
+    if is_llm_error(model_used):
+        raise HTTPException(status_code=503, detail=LLM_ERROR_NOTICE_AR)
 
     # 3. Evidence validation + confidence scoring
     article_pass, missing_articles = validate_evidence(answer, contexts)

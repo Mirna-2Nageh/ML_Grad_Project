@@ -1,13 +1,15 @@
 """Defense memorandum generation endpoint."""
 import time
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 
 import config
 from app.models import (
     DefenseRequest, DefenseResponse, SourceInfo, ConfidenceFactors,
 )
 from app.services.retrieval import retrieval_service
-from app.services.llm import async_call_llm, used_fallback, FALLBACK_NOTICE_AR
+from app.services.llm import (
+    async_call_llm, used_fallback, is_llm_error, FALLBACK_NOTICE_AR, LLM_ERROR_NOTICE_AR,
+)
 from app.services.confidence import validate_evidence, topic_match, compute_confidence
 from app.core.prompts import PROMPTS, SYSTEM_MESSAGES
 
@@ -34,6 +36,8 @@ async def generate_defense(req: DefenseRequest):
     memorandum, _, model_used = await async_call_llm(
         prompt, feature="defense", system_msg=SYSTEM_MESSAGES["defense"], max_tokens=2048,
     )
+    if is_llm_error(model_used):
+        raise HTTPException(status_code=503, detail=LLM_ERROR_NOTICE_AR)
 
     article_pass, missing = validate_evidence(memorandum, contexts)
     topic_hit = topic_match(req.case_facts, sources)

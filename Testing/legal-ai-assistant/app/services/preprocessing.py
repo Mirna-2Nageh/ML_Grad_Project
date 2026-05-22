@@ -115,13 +115,25 @@ def get_legal_topic(source_path: str) -> str:
     return ''
 
 
-_ARTICLE_REF_PATTERN = re.compile(r'(?:المادة|مادة)\s+(\d+)')
+# Matches an article keyword (singular/plural/dual) + optional colon, then the
+# first number AND any following comma/'و'-separated numbers in the same list.
+# Handles: "المادة 316", "المواد: 315", "المواد 211، 212، 213", "المادتين 230 و232".
+_ARTICLE_BLOCK_PATTERN = re.compile(
+    r'(?:المادة|المادتين|المادتان|المواد|مادة|مادتين|مواد)\s*:?\s*'
+    r'(\d+(?:\s*[،,و]\s*\d+)*)'
+)
+_NUM_PATTERN = re.compile(r'\d+')
 
 
 def extract_article_references(text: str) -> List[str]:
-    """Return deduplicated Egyptian legal article numbers cited in `text`, as Western-digit strings."""
+    """Return deduplicated Egyptian legal article numbers cited in `text`, as Western-digit strings.
+
+    Recognizes singular/plural/dual article keywords and number lists, so
+    "المواد 211، 212، 213" yields ['211','212','213'] (not just the first)."""
     normalized = normalize_arabic_indic_digits(text)
-    matches = _ARTICLE_REF_PATTERN.findall(normalized)
+    matches: List[str] = []
+    for block in _ARTICLE_BLOCK_PATTERN.findall(normalized):
+        matches.extend(_NUM_PATTERN.findall(block))
     unique = list(set(matches))
     try:
         unique.sort(key=int)

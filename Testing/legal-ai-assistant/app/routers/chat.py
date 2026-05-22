@@ -13,7 +13,10 @@ from app.models import (
     ChatRequest, ChatResponse, SourceInfo, ConfidenceFactors, SessionInfoResponse,
 )
 from app.services.retrieval import retrieval_service
-from app.services.llm import async_call_llm, async_stream_llm, used_fallback, FALLBACK_NOTICE_AR
+from app.services.llm import (
+    async_call_llm, async_stream_llm, used_fallback, is_llm_error,
+    FALLBACK_NOTICE_AR, LLM_ERROR_NOTICE_AR,
+)
 from app.services.session import session_manager
 from app.services.confidence import validate_evidence, topic_match, compute_confidence
 from app.core.prompts import PROMPTS, SYSTEM_MESSAGES
@@ -61,7 +64,12 @@ async def chat(req: ChatRequest):
     # 4. Generate answer
     answer, _, model_used = await async_call_llm(
         prompt, feature="qa", system_msg=SYSTEM_MESSAGES["chat"],
+        max_tokens=config.LLM_MAX_TOKENS_QA,
     )
+
+    # If every LLM provider failed, surface a 503 and don't record the error as a turn.
+    if is_llm_error(model_used):
+        raise HTTPException(status_code=503, detail=LLM_ERROR_NOTICE_AR)
 
     # 5. Record turn
     await session_manager.add_assistant_message(req.session_id, answer)
