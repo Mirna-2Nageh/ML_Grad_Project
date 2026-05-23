@@ -158,6 +158,54 @@ with st.sidebar:
         st.caption("تأكد من تشغيل: `uvicorn app.main:app`")
 
     st.divider()
+
+    # Permanent-index ingestion (mode #3 of the upload feature). Files added
+    # here become searchable for ALL future questions, unlike the per-question
+    # attachment in Tab 1 which is one-shot.
+    with st.expander("📥 إضافة مستندات للفهرس الدائم"):
+        st.caption(
+            "ارفع ملفات (.txt / .pdf / .docx) لإضافتها لقاعدة المعرفة الدائمة. "
+            "سيتم تجزئتها وفهرستها، وستظهر في نتائج البحث لجميع الأسئلة اللاحقة."
+        )
+        ingest_files = st.file_uploader(
+            "اختر ملفًا أو أكثر",
+            type=["txt", "pdf", "docx"],
+            accept_multiple_files=True,
+            key="ingest_files",
+        )
+        if st.button("🚀 إضافة للفهرس", key="ingest_btn", use_container_width=True):
+            if not ingest_files:
+                st.warning("اختر ملفًا واحدًا على الأقل")
+            else:
+                with st.spinner(f"جاري معالجة {len(ingest_files)} ملف..."):
+                    try:
+                        files_data = [
+                            ("files", (f.name, f.getvalue(), f.type or "application/octet-stream"))
+                            for f in ingest_files
+                        ]
+                        r = requests.post(
+                            f"{API_BASE}/ingest", files=files_data, timeout=600,
+                        )
+                        if r.status_code >= 400:
+                            st.error(f"خطأ {r.status_code}: {r.text[:200]}")
+                        else:
+                            data = r.json()
+                            status = data.get("status", "?")
+                            if status == "ok":
+                                st.success(
+                                    f"✅ تمت معالجة {data.get('files_processed', 0)} ملف، "
+                                    f"إضافة {data.get('chunks_created', 0)} مقطع "
+                                    f"({data.get('duration_s', 0):.1f}s)"
+                                )
+                            else:
+                                st.warning(f"الحالة: {status}")
+                                st.write(data)
+                            for err in (data.get("errors") or [])[:5]:
+                                st.warning(f"⚠️ {err}")
+                    except Exception as e:
+                        st.error(f"فشل الرفع: {e}")
+
+    st.divider()
     st.caption("v2.0.0 | Phase 1: rerank + confidence + grounding")
 
 
@@ -182,20 +230,66 @@ with tab1:
     with col2:
         k_val = st.slider("عدد المراجع", 3, 15, 7, key="qa_k")
 
+    # Optional per-question attachment: upload a file OR paste text. When
+    # either is given, the request goes to /qa/upload instead of /qa and the
+    # parsed text is prepended to the retrieved context for THIS question only.
+    with st.expander("📎 إرفاق مستند (اختياري) — .txt / .pdf / .docx أو نص ملصق"):
+        uploaded_file = st.file_uploader(
+            "ارفع ملفًا للسؤال عنه",
+            type=["txt", "pdf", "docx"],
+            key="qa_upload_file",
+            help="سيُضاف محتوى الملف إلى السياق لهذا السؤال فقط — لن يُضاف للفهرس الدائم.",
+        )
+        pasted_text = st.text_area(
+            "أو الصق النص هنا",
+            height=120,
+            key="qa_upload_text",
+            placeholder="مثال: المادة 240 من قانون العقوبات...",
+        )
+
     if st.button("🔍 ابحث", key="qa_btn", type="primary", use_container_width=True):
         if question:
-            with st.spinner("جاري البحث والتحليل..."):
+            has_upload = bool(uploaded_file or (pasted_text and pasted_text.strip()))
+            spinner_text = (
+                "جاري البحث والتحليل مع المستند المرفق..."
+                if has_upload else "جاري البحث والتحليل..."
+            )
+            with st.spinner(spinner_text):
                 try:
-                    r = requests.post(f"{API_BASE}/qa", json={
-                        "question": question, "k": k_val
-                    }, timeout=180)
-                    data = r.json()
+                    if has_upload:
+                        # Multipart upload to /qa/upload — file wins if both given
+                        form_data = {
+                            "question": (None, question),
+                            "k": (None, str(k_val)),
+                            "prompt_style": (None, "restrictive"),
+                        }
+                        if uploaded_file is not None:
+                            form_data["file"] = (
+                                uploaded_file.name,
+                                uploaded_file.getvalue(),
+                                uploaded_file.type or "application/octet-stream",
+                            )
+                        elif pasted_text and pasted_text.strip():
+                            form_data["text"] = (None, pasted_text)
+                        r = requests.post(f"{API_BASE}/qa/upload", files=form_data, timeout=180)
+                    else:
+                        r = requests.post(f"{API_BASE}/qa", json={
+                            "question": question, "k": k_val
+                        }, timeout=180)
 
-                    st.markdown(f'<div class="answer-box">{data.get("answer", "")}</div>', unsafe_allow_html=True)
-                    _render_warnings(data.get("warnings"))
-                    _render_metrics(data, with_retrieval=True)
-                    _render_sources(data)
-                    _render_confidence_breakdown(data)
+                    if r.status_code >= 400:
+                        try:
+                            err = r.json().get("detail", "")
+                        except Exception:
+                            err = r.text
+                        st.error(f"خطأ {r.status_code}: {err}")
+                    else:
+                        data = r.json()
+                        st.markdown(f'<div class="answer-box">{data.get("answer", "")}</div>', unsafe_allow_html=True)
+                        _render_warnings(data.get("warnings"))
+                        _render_metrics(data, with_retrieval=True)
+                        _render_sources(data)
+                        _render_confidence_breakdown(data)
                 except Exception as e:
                     st.error(f"خطأ: {e}")
 

@@ -221,3 +221,37 @@ class IngestResponse(BaseModel):
     vectors_added: int = Field(default=0, description="Number of vectors added to FAISS")
     errors: List[str] = Field(default_factory=list, description="Any errors encountered")
     duration_s: float = Field(default=0, description="Total processing time in seconds")
+
+
+# ──────────────────────────────────────────────
+# Upload / Attached-document Models
+# ──────────────────────────────────────────────
+# These cover three upload modes the API supports:
+#   1. /qa/upload         — per-question attached file (one-shot, not persisted)
+#   2. /chat/attach       — bind a document to a session for multi-turn chat
+#   3. /chat/attachments  — list/remove docs currently attached to a session
+# All three accept the same file types: .txt, .pdf, .docx, or pasted text.
+
+class AttachedDocInfo(BaseModel):
+    """Metadata about a document attached to a chat session."""
+    doc_id: str = Field(..., description="Server-assigned id, unique within the session")
+    filename: str = Field(default="", description="Original upload filename (or 'pasted-text' for raw strings)")
+    content_type: str = Field(default="", description="File extension: .txt / .pdf / .docx / .text")
+    char_count: int = Field(default=0, description="Number of characters extracted from the document")
+    attached_at: float = Field(default=0, description="Unix timestamp when the doc was attached")
+
+
+class ChatAttachResponse(BaseModel):
+    """Response from /chat/attach — confirms the document is bound to the session."""
+    session_id: str
+    attached: AttachedDocInfo = Field(..., description="Info about the newly attached document")
+    attachments_total: int = Field(default=0, description="Total documents currently attached to this session")
+    total_chars: int = Field(default=0, description="Combined character count across all attachments")
+    warnings: List[str] = Field(default_factory=list, description="Non-fatal issues (truncation, encoding fallback, ...)")
+
+
+class ChatAttachmentsListResponse(BaseModel):
+    """Response from GET /chat/{session_id}/attachments."""
+    session_id: str
+    attachments: List[AttachedDocInfo] = Field(default_factory=list)
+    total_chars: int = Field(default=0)

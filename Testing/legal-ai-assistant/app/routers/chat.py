@@ -5,12 +5,14 @@ Two flavors: /chat (request-response) and /chat/stream (SSE token stream for fro
 import json
 import time
 import logging
-from fastapi import APIRouter, HTTPException
+from typing import Optional
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 
 import config
 from app.models import (
     ChatRequest, ChatResponse, SourceInfo, ConfidenceFactors, SessionInfoResponse,
+    AttachedDocInfo, ChatAttachResponse, ChatAttachmentsListResponse,
 )
 from app.services.retrieval import retrieval_service
 from app.services.llm import (
@@ -24,6 +26,7 @@ from app.services.confidence import (
 )
 from app.services.postprocessing import postprocess_answer
 from app.services.article_lookup import article_lookup_service
+from app.services.upload_helper import parse_uploaded_file, parse_uploaded_text
 from app.core.prompts import PROMPTS, SYSTEM_MESSAGES
 
 logger = logging.getLogger(__name__)
@@ -79,6 +82,15 @@ async def chat(req: ChatRequest):
 
     # 2. Retrieve relevant legal context — multi-query + domain boost when enabled.
     contexts, sources, _ = retrieval_service.retrieve_multi_query(req.message, k=req.k)
+
+    # 2b. If the session has documents attached, prepend them to the context
+    # block so the LLM (and the evidence validator) treat them as authoritative
+    # grounding alongside the retrieved corpus. The attachment text is wrapped
+    # in the same [المستندات المرفقة] markers used by /qa/upload.
+    attachments_block = session.format_attachments()
+    if attachments_block:
+        contexts = [attachments_block] + contexts
+
     context_str = "\n---\n".join(contexts) if contexts else "لا يوجد سياق قانوني متاح."
 
     # 3. Build prompt with context + history
@@ -299,6 +311,10 @@ async def chat_stream(req: ChatRequest):
 
     # 2. Retrieve (synchronous, fast — runs before streaming starts)
     contexts, sources, _ = retrieval_service.retrieve(req.message, k=req.k)
+    # Prepend any documents attached to this session so the LLM sees them every turn.
+    attachments_block = session.format_attachments()
+    if attachments_block:
+        contexts = [attachments_block] + contexts
     context_str = "\n---\n".join(contexts) if contexts else "لا يوجد سياق قانوني متاح."
 
     # 3. Build prompt
@@ -386,3 +402,99 @@ async def delete_session(session_id: str):
     if not deleted:
         raise HTTPException(status_code=404, detail="Session not found")
     return {"status": "deleted", "session_id": session_id}
+
+
+# ──────────────────────────────────────────────
+# Session-attached documents (upload mode #2)
+# ──────────────────────────────────────────────
+# Use case: the user uploads a contract / case file once, then chats about it
+# across multiple turns. Each turn prepends every attached document to the
+# retrieved context — see the chat() handler above where session.format_attachments()
+# is called. Documents persist with the session JSON on disk so they survive
+# restarts. Validation accepts article numbers from attached docs too (they
+# become part of the combined context).
+
+@router.post(
+    "/chat/attach",
+    response_model=ChatAttachResponse,
+    summary="Attach a document to a chat session",
+    description=(
+        "Bind a document to a session so subsequent /chat turns include it in "
+        "the LLM context. Accepts .txt, .pdf, .docx files OR pasted text. "
+        "Multiple documents can be attached to the same session; each turn "
+        "includes ALL attachments.\n\n"
+        "Send as `multipart/form-data` with fields: `session_id` (required), "
+        "`file` (one of .txt/.pdf/.docx, optional), `text` (raw string, optional). "
+        "Provide either `file` OR `text`; if both, `file` wins."
+    ),
+)
+async def chat_attach(
+    session_id: str = Form(...),
+    file: Optional[UploadFile] = File(default=None),
+    text: Optional[str] = Form(default=None),
+):
+    # Parse the upload (file wins over text if both given).
+    if file is not None and file.filename:
+        cleaned, fname, ctype, warnings = await parse_uploaded_file(file)
+    elif text:
+        cleaned, fname, ctype, warnings = parse_uploaded_text(text)
+    else:
+        raise HTTPException(
+            status_code=400, detail="Provide either a `file` or a `text` field.",
+        )
+
+    if not cleaned:
+        raise HTTPException(
+            status_code=400,
+            detail=" / ".join(warnings) or "تعذّر قراءة المرفق.",
+        )
+
+    doc = await session_manager.add_attachment(
+        session_id=session_id, filename=fname, content_type=ctype, text=cleaned,
+    )
+
+    # Recompute totals for the response
+    all_attachments = await session_manager.list_attachments(session_id)
+    total_chars = sum(len(a.text) for a in all_attachments)
+
+    return ChatAttachResponse(
+        session_id=session_id,
+        attached=AttachedDocInfo(**doc.info_dict()),
+        attachments_total=len(all_attachments),
+        total_chars=total_chars,
+        warnings=warnings,
+    )
+
+
+@router.get(
+    "/chat/{session_id}/attachments",
+    response_model=ChatAttachmentsListResponse,
+    summary="List documents attached to a chat session",
+)
+async def chat_attachments_list(session_id: str):
+    docs = await session_manager.list_attachments(session_id)
+    return ChatAttachmentsListResponse(
+        session_id=session_id,
+        attachments=[AttachedDocInfo(**d.info_dict()) for d in docs],
+        total_chars=sum(len(d.text) for d in docs),
+    )
+
+
+@router.delete(
+    "/chat/{session_id}/attachments/{doc_id}",
+    summary="Remove one attached document by id",
+)
+async def chat_attachment_remove(session_id: str, doc_id: str):
+    removed = await session_manager.remove_attachment(session_id, doc_id)
+    if not removed:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    return {"status": "removed", "session_id": session_id, "doc_id": doc_id}
+
+
+@router.delete(
+    "/chat/{session_id}/attachments",
+    summary="Detach all documents from a chat session",
+)
+async def chat_attachments_clear(session_id: str):
+    n = await session_manager.clear_attachments(session_id)
+    return {"status": "cleared", "session_id": session_id, "removed_count": n}

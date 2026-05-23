@@ -1,6 +1,7 @@
 """Legal Q&A endpoint."""
 import time
-from fastapi import APIRouter, HTTPException
+from typing import Optional
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 
 import config
 from app.models import (
@@ -16,25 +17,39 @@ from app.services.confidence import (
 )
 from app.services.postprocessing import postprocess_answer
 from app.services.article_lookup import article_lookup_service
+from app.services.upload_helper import (
+    parse_uploaded_file, parse_uploaded_text, format_doc_for_context,
+)
 from app.core.prompts import PROMPTS, SYSTEM_MESSAGES
 
 router = APIRouter()
 
 
-@router.post(
-    "/qa",
-    response_model=QAResponse,
-    responses={500: {"model": ErrorResponse}},
-    summary="Legal Question Answering",
-    description="Ask a legal question about Egyptian Criminal Law. Returns a grounded answer with citations and a confidence score.",
-)
-async def legal_qa(req: QARequest):
-    t0 = time.time()
+async def _run_qa(
+    question: str,
+    k: int,
+    prompt_style: str,
+    attached_doc_text: Optional[str] = None,
+    attached_doc_filename: str = "",
+    attached_doc_content_type: str = "",
+    extra_warnings: Optional[list] = None,
+) -> QAResponse:
+    """Core QA pipeline — shared by /qa (JSON) and /qa/upload (multipart).
 
-    # 0. Input gate — reject markdown headers, bullets, single words, mid-sentence
-    # fragments before they hit retrieval. These previously got fabricated answers
-    # (evaluation showed ~5 such inputs out of 28 produced hallucinated citations).
-    if not is_meaningful_query(req.question):
+    When `attached_doc_text` is non-empty, the document is wrapped in the same
+    delimited block /chat/attach uses and prepended to the retrieved context,
+    so the LLM treats it as authoritative material AND the evidence validator
+    will accept article numbers cited from it.
+
+    Skipping the input-gate when an attachment is present is intentional: a
+    user uploading a contract and asking "لخّص" is a meaningful request even
+    though "لخّص" alone would be rejected as a fragment.
+    """
+    t0 = time.time()
+    has_attachment = bool(attached_doc_text and attached_doc_text.strip())
+
+    # 0. Input gate — only enforced when no attachment provides standalone meaning.
+    if not has_attachment and not is_meaningful_query(question):
         return QAResponse(
             answer=INCOMPLETE_QUERY_MESSAGE_AR,
             confidence_score=0.0,
@@ -51,14 +66,25 @@ async def legal_qa(req: QARequest):
         )
 
     # 1. Retrieve relevant context — multi-query + domain boost when enabled.
-    contexts, sources, timing = retrieval_service.retrieve_multi_query(req.question, k=req.k)
-    if not contexts:
+    contexts, sources, timing = retrieval_service.retrieve_multi_query(question, k=k)
+    # If retrieval found nothing AND there's no attachment, we have no grounding
+    # to work with. With an attachment, we can still answer from that alone.
+    if not contexts and not has_attachment:
         raise HTTPException(status_code=404, detail="No relevant documents found")
 
-    # 2. Build prompt + generate
+    # 2. Inject the attached doc at the TOP of the context block. The "[المستند
+    # المرفق]" delimiter mirrors the session-attachment marker so the LLM can
+    # tell where user-supplied material ends and retrieved corpus begins.
+    if has_attachment:
+        doc_block = format_doc_for_context(
+            attached_doc_text, attached_doc_filename, attached_doc_content_type,
+        )
+        contexts = [doc_block] + contexts
+
+    # 3. Build prompt + generate
     context_str = "\n---\n".join(contexts)[:config.MAX_CONTEXT_CHARS]
-    prompt_key = f"qa_{req.prompt_style}" if f"qa_{req.prompt_style}" in PROMPTS else "qa_restrictive"
-    prompt = PROMPTS[prompt_key].format(context=context_str, question=req.question)
+    prompt_key = f"qa_{prompt_style}" if f"qa_{prompt_style}" in PROMPTS else "qa_restrictive"
+    prompt = PROMPTS[prompt_key].format(context=context_str, question=question)
 
     answer, _, model_used = await async_call_llm(
         prompt, feature="qa", system_msg=SYSTEM_MESSAGES["qa"],
@@ -85,7 +111,7 @@ async def legal_qa(req: QARequest):
         # articles, the 2nd retry forbids all of them at once.
         retry_prompt = PROMPTS["qa_retry_ungrounded"].format(
             context=context_str,
-            question=req.question,
+            question=question,
             draft=answer,
             missing=", ".join(sorted(set(blocked_articles), key=lambda x: int(x) if x.isdigit() else x)),
         )
@@ -126,7 +152,7 @@ async def legal_qa(req: QARequest):
             rescue_prompt = PROMPTS["qa_rescue_with_lookup"].format(
                 context=context_str,
                 rescue_context=rescue_context_str,
-                question=req.question,
+                question=question,
                 draft=answer,
             )
             rescue_answer, _, rescue_model = await async_call_llm(
@@ -167,7 +193,7 @@ async def legal_qa(req: QARequest):
     else:
         is_refusal = False
 
-    topic_hit = topic_match(req.question, sources)
+    topic_hit = topic_match(question, sources)
     rerank_scores = [s.get("rerank_score", 0.0) for s in sources]
     confidence, factors = compute_confidence(
         rerank_scores=rerank_scores,
@@ -176,7 +202,12 @@ async def legal_qa(req: QARequest):
         topic_match_hit=topic_hit,
     )
 
-    warnings = []
+    warnings = list(extra_warnings or [])
+    if has_attachment:
+        warnings.append(
+            f"تم تضمين المستند المرفق ({attached_doc_filename or 'مستند'}, "
+            f"{len(attached_doc_text)} حرفاً) في السياق."
+        )
     if not article_pass:
         warnings.append(
             "تنبيه: المواد التالية مذكورة في الإجابة لكنها غير موجودة في المصادر المسترجعة: "
@@ -213,4 +244,75 @@ async def legal_qa(req: QARequest):
         latency_ms=round(total_ms, 1),
         retrieval_ms=round(timing.get("total_ms", 0), 1),
         model=model_used,
+    )
+
+
+# ──────────────────────────────────────────────
+# Public endpoints — both delegate to _run_qa
+# ──────────────────────────────────────────────
+
+@router.post(
+    "/qa",
+    response_model=QAResponse,
+    responses={500: {"model": ErrorResponse}},
+    summary="Legal Question Answering",
+    description="Ask a legal question about Egyptian Criminal Law. Returns a grounded answer with citations and a confidence score.",
+)
+async def legal_qa(req: QARequest):
+    return await _run_qa(
+        question=req.question,
+        k=req.k,
+        prompt_style=req.prompt_style,
+    )
+
+
+@router.post(
+    "/qa/upload",
+    response_model=QAResponse,
+    responses={400: {"model": ErrorResponse}, 500: {"model": ErrorResponse}},
+    summary="Legal Q&A with attached document (per-question context)",
+    description=(
+        "Same as `/qa` but accepts an attached document (.txt / .pdf / .docx) "
+        "OR a pasted-text string, parsed and prepended to the retrieved legal "
+        "context for THIS request only (not persisted; not added to the index).\n\n"
+        "Use this when the user has a specific contract / case file / legal "
+        "memo they want analyzed in light of Egyptian criminal law. Article "
+        "numbers cited in the answer can come from EITHER the attachment or "
+        "the retrieved corpus — the evidence validator checks both.\n\n"
+        "Send as `multipart/form-data` with form fields: `question` (required), "
+        "`file` (one of .txt/.pdf/.docx, optional), `text` (raw string, optional), "
+        "`k` (int, default 7), `prompt_style` (default 'restrictive'). "
+        "Provide either `file` OR `text`; if both, `file` wins."
+    ),
+)
+async def legal_qa_upload(
+    question: str = Form(..., min_length=1, max_length=2000),
+    file: Optional[UploadFile] = File(default=None),
+    text: Optional[str] = Form(default=None),
+    k: int = Form(default=7, ge=1, le=20),
+    prompt_style: str = Form(default="restrictive"),
+):
+    # Parse whichever payload was given (file wins if both).
+    if file is not None and file.filename:
+        cleaned, fname, ctype, warnings = await parse_uploaded_file(file)
+    elif text:
+        cleaned, fname, ctype, warnings = parse_uploaded_text(text)
+    else:
+        cleaned, fname, ctype, warnings = "", "", "", []
+
+    if (file is not None and file.filename or text) and not cleaned:
+        # User TRIED to attach something but parsing failed — surface why.
+        raise HTTPException(
+            status_code=400,
+            detail=" / ".join(warnings) or "تعذّر قراءة المرفق.",
+        )
+
+    return await _run_qa(
+        question=question,
+        k=k,
+        prompt_style=prompt_style,
+        attached_doc_text=cleaned,
+        attached_doc_filename=fname,
+        attached_doc_content_type=ctype,
+        extra_warnings=warnings,
     )
