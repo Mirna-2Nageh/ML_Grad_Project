@@ -2,7 +2,7 @@
 Arabic legal text preprocessing and document classification.
 """
 import re
-from typing import List
+from typing import List, Dict
 import config
 
 
@@ -113,6 +113,112 @@ def get_legal_topic(source_path: str) -> str:
             if not (next_part.endswith('.txt') or next_part.endswith('.pdf')):
                 return next_part
     return ''
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Query domain classification + synonym expansion
+#
+# WHY: The eval(3) data showed retrieval missed procedural-law chunks for
+# questions like "شروط التوقيف الاحتياطي" because user phrasing didn't lexically
+# match the chunks (which say "الحبس الاحتياطي"). Domain detection + a small
+# Arabic synonym table fixes the most common variants without an LLM call.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Procedural keywords — these belong in قانون الإجراءات الجنائية.
+_PROCEDURAL_TERMS = {
+    'التوقيف', 'الحبس الاحتياطي', 'الحبس', 'التحقيق', 'التفتيش',
+    'الضبط', 'محضر', 'محاضر', 'النيابة', 'النيابة العامة',
+    'قاضي التحقيق', 'الاستئناف', 'الطعن', 'النقض', 'حكم النقض',
+    'الإجراءات', 'الاجراءات', 'إجراءات', 'اجراءات',
+    'الاستجواب', 'القبض', 'إعادة المحاكمة', 'المعارضة',
+    'الإدعاء', 'الادعاء', 'المحاكمة',
+}
+
+# Substantive keywords — these belong in قانون العقوبات.
+_SUBSTANTIVE_TERMS = {
+    'العقوبة', 'عقوبة', 'الجريمة', 'جريمة', 'الأركان', 'أركان',
+    'تعريف', 'القصد الجنائي', 'الركن المادي', 'الركن المعنوي',
+    'الشروع', 'القتل العمد', 'القتل', 'السرقة', 'التزوير', 'الرشوة',
+    'الاختلاس', 'الإباحة', 'موانع المسؤولية', 'الدفاع الشرعي',
+    'الجنحة', 'الجناية', 'المخالفة', 'المسؤولية الجنائية',
+}
+
+# Synonym sets — each entry triggers an additional retrieval pass. The same
+# concept is referenced under multiple terms in the index, so the original
+# query + 1-2 synonyms substantially widens recall without ballooning latency.
+_QUERY_SYNONYMS: Dict[str, List[str]] = {
+    'التوقيف الاحتياطي':    ['الحبس الاحتياطي', 'احتجاز المتهم على ذمة التحقيق'],
+    'الحبس الاحتياطي':      ['التوقيف الاحتياطي', 'احتجاز المتهم على ذمة التحقيق'],
+    'الدفاع الشرعي':        ['حق الدفاع عن النفس', 'الدفاع عن النفس والمال', 'دفع الصائل'],
+    'القتل العمد':          ['قتل عمد مع سبق الإصرار', 'إزهاق الروح عمداً'],
+    'القتل الخطأ':          ['القتل غير العمد', 'القتل بإهمال'],
+    'الجريمة التامة':       ['اكتمال الجريمة', 'الجريمة المكتملة'],
+    'الشروع':               ['البدء في التنفيذ', 'الشروع في الجريمة', 'الشروع غير الموقوف'],
+    'موانع المسؤولية':      ['أسباب امتناع المسؤولية', 'عدم المسؤولية الجنائية', 'الإكراه والاضطرار'],
+    'أسباب الإباحة':        ['أسباب الإباحة العامة', 'إباحة الفعل', 'انتفاء الجريمة'],
+    'الفاعل الأصلي':        ['المساهمة الجنائية', 'الفاعل والشريك', 'فاعل الجريمة'],
+    'الشريك':               ['الاشتراك في الجريمة', 'المساهمة التبعية', 'شريك بالاتفاق'],
+    'القصد الجنائي':        ['القصد العام', 'القصد الخاص', 'الركن المعنوي'],
+    'الركن المادي':         ['السلوك الإجرامي', 'الفعل المادي للجريمة'],
+    'الركن المعنوي':        ['القصد الجنائي', 'الإرادة الإجرامية'],
+    'التزوير':              ['تزوير المحررات', 'اصطناع محرر', 'تزوير المحررات الرسمية'],
+    'السرقة':               ['الاختلاس', 'سرقة المنقولات', 'أخذ مال الغير'],
+    'السرقة بالإكراه':      ['سرقة باستخدام القوة', 'الإكراه في السرقة'],
+    'الجهل بالقانون':       ['عدم العلم بالقانون', 'الغلط في القانون'],
+    'علاقة السببية':        ['رابطة السببية', 'الرابطة السببية', 'إسناد النتيجة'],
+    'النية الإجرامية':      ['القصد الجنائي', 'الإرادة الإجرامية'],
+}
+
+
+def classify_query_domain(query: str) -> str:
+    """Return 'procedural', 'substantive', or 'unknown' based on Arabic keywords.
+
+    Used by the retrieval layer to boost chunks whose doc_type matches the
+    inferred domain. Conservative on purpose — a missed classification just
+    falls back to undifferentiated hybrid retrieval (current behavior).
+    """
+    if not query:
+        return 'unknown'
+    q = query
+    proc_hits = sum(1 for t in _PROCEDURAL_TERMS if t in q)
+    subst_hits = sum(1 for t in _SUBSTANTIVE_TERMS if t in q)
+    # Require a clear majority; ties stay 'unknown' so we don't push the wrong way.
+    if proc_hits > subst_hits and proc_hits > 0:
+        return 'procedural'
+    if subst_hits > proc_hits and subst_hits > 0:
+        return 'substantive'
+    return 'unknown'
+
+
+def expand_query_synonyms(query: str, max_extra: int = 2) -> List[str]:
+    """Return up to `max_extra` synonym variants of `query` for multi-pass retrieval.
+
+    Replaces the first matched key in the query with each of its synonyms.
+    Deterministic, no LLM call, ~microseconds. Returns [] when no key matches —
+    in which case the caller should just use the original query.
+    """
+    if not query:
+        return []
+    variants: List[str] = []
+    seen: set = {query.strip()}
+    for key, syns in _QUERY_SYNONYMS.items():
+        if key in query:
+            for syn in syns:
+                v = query.replace(key, syn).strip()
+                if v and v not in seen:
+                    variants.append(v)
+                    seen.add(v)
+                if len(variants) >= max_extra:
+                    return variants
+    return variants
+
+
+# Map a query domain to the chunk doc_types that should be boosted for that domain.
+DOMAIN_TO_DOC_TYPES: Dict[str, set] = {
+    'procedural':  {'criminal_procedure', 'cassation_ruling'},
+    'substantive': {'penal_code', 'cassation_encyclopedia', 'criminal_law_reference', 'legal_reference'},
+    'unknown':     set(),
+}
 
 
 # Matches an article keyword (singular/plural/dual) + optional colon, then the

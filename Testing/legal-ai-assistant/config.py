@@ -144,7 +144,35 @@ CONFIDENCE_WEIGHTS = {
     "article_validation": 0.20,  # 1.0 if every cited article appears in retrieved context, else 0
     "topic_match":        0.15,  # 1.0 if any source's legal_topic appears in the question
 }
-CONFIDENCE_THRESHOLD_CLARIFY = float(os.getenv("CONFIDENCE_THRESHOLD_CLARIFY", "0.4"))
+CONFIDENCE_THRESHOLD_CLARIFY = float(os.getenv("CONFIDENCE_THRESHOLD_CLARIFY", "0.5"))
+
+# ──────────────────────────────────────────────
+# Multi-Query Retrieval + Domain-Aware Routing (Phase 2)
+# Heuristic synonym expansion: deterministic, no LLM cost. Targets retrieval gaps
+# uncovered in eval(3) — e.g. "التوقيف الاحتياطي" wasn't matching "الحبس الاحتياطي"
+# chunks, so the LLM had to refuse or hallucinate.
+# ──────────────────────────────────────────────
+# NOTE: USE_MULTI_QUERY is OFF by default — eval(v5) showed synonym expansion
+# diluted retrieval quality on this index (4 questions regressed from passing
+# to hallucinating). Flip to true once a higher-quality index (BGE-M3 +
+# article-aware chunking) is in place; for now the single-query path is best.
+USE_MULTI_QUERY = os.getenv("USE_MULTI_QUERY", "False").lower() == "true"
+# Domain boost: when the question is clearly procedural (التوقيف، التحقيق، الطعن)
+# or substantive (عقوبة، أركان، تعريف)، add weight to chunks whose doc_type matches
+# the inferred domain. Weight is added to RRF score before reranking.
+USE_DOMAIN_BOOST = os.getenv("USE_DOMAIN_BOOST", "True").lower() == "true"
+DOMAIN_BOOST_WEIGHT = float(os.getenv("DOMAIN_BOOST_WEIGHT", "0.05"))
+# Smarter retry on hallucinated citations:
+#   - skip when no articles cited (a refusal has nothing to fix)
+#   - up to N attempts, each one passes the growing block-list of bad articles
+# 1 retry is the sweet spot on Groq's free tier: a 2nd retry blows the 6000
+# token-per-minute budget (~4k tokens per call), causing 429s that cascade into
+# fallbacks and stalled requests. Bump to 2+ only on paid tiers.
+RETRY_MAX_ATTEMPTS = int(os.getenv("RETRY_MAX_ATTEMPTS", "1"))
+# Programmatic post-processing of the LLM answer: strip casual openings
+# ("حسناً"، "بالتأكيد"...) and rewrite the leaky template phrase
+# "المادة المطلوبة غير متوفرة في السياق المقدم" if the LLM embedded it mid-clause.
+USE_ANSWER_POSTPROCESS = os.getenv("USE_ANSWER_POSTPROCESS", "True").lower() == "true"
 
 # ──────────────────────────────────────────────
 # Agentic memo self-check (draft → verify against context → revise)

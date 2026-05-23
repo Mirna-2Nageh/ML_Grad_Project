@@ -10,6 +10,7 @@ import config
 from app.services.retrieval import retrieval_service
 from app.services.reranker import reranker_service
 from app.services.session import session_manager
+from app.services.article_lookup import article_lookup_service
 from app.routers import qa, summarize, weakness, defense, health, chat, ingest, forensic
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(name)s | %(levelname)s | %(message)s")
@@ -26,6 +27,9 @@ async def lifespan(app: FastAPI):
     try:
         retrieval_service.load()
         reranker_service.load()
+        # ArticleLookupService shares the SAME chunks list the retriever just
+        # loaded — no second disk read, no duplicate memory.
+        article_lookup_service.load(retrieval_service.chunks)
         restored = session_manager.load_from_disk()
         session_manager.start_pruner(interval_s=3600)
         logger.info(f"✅ LLM model: {config.LLM_MODEL}")
