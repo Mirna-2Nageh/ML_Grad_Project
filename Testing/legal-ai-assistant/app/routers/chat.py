@@ -110,8 +110,37 @@ async def chat(req: ChatRequest):
     if is_llm_error(model_used):
         raise HTTPException(status_code=503, detail=LLM_ERROR_NOTICE_AR)
 
-    # 5. Evidence validation + multi-attempt corrective retry with growing block-list.
+    # 5. Evidence validation.
     article_pass, missing = validate_evidence(answer, contexts)
+
+    # 5a. ITERATIVE RETRIEVAL — widen the retrieval window if validation flagged
+    # articles not in the chunks we showed. Mirrors the /qa logic; see qa.py
+    # for the rationale.
+    iter_expansions: list = []
+    if not article_pass and missing and config.USE_ITERATIVE_RETRIEVAL:
+        seen_contexts = set(contexts)
+        for next_k in [n for n in config.ITERATIVE_K_SEQUENCE if n > req.k]:
+            extra_contexts, extra_sources, _ = retrieval_service.retrieve_multi_query(
+                req.message, k=next_k,
+            )
+            new_chunks = [c for c in extra_contexts if c not in seen_contexts]
+            if not new_chunks:
+                continue
+            iter_expansions.append(next_k)
+            contexts = contexts + new_chunks
+            seen_contexts.update(new_chunks)
+            seen_src_keys = {(s.get("source"), s.get("retrieval_score")) for s in sources}
+            for s in extra_sources:
+                key = (s.get("source"), s.get("retrieval_score"))
+                if key not in seen_src_keys:
+                    sources.append(s)
+                    seen_src_keys.add(key)
+            context_str = "\n---\n".join(contexts) if contexts else "لا يوجد سياق قانوني متاح."
+            article_pass, missing = validate_evidence(answer, contexts)
+            if article_pass:
+                break
+
+    # 6. Multi-attempt corrective retry with growing block-list.
     retry_attempts = 0
     blocked = list(missing)
     while (
@@ -210,6 +239,11 @@ async def chat(req: ChatRequest):
     )
 
     warnings = []
+    if iter_expansions:
+        warnings.append(
+            "تم توسيع نطاق البحث تلقائياً إلى "
+            f"{iter_expansions[-1]} مرجعاً للعثور على الاستشهادات المطلوبة."
+        )
     if not article_pass:
         warnings.append(
             "تنبيه: المواد التالية مذكورة في الإجابة لكنها غير موجودة في المصادر: "

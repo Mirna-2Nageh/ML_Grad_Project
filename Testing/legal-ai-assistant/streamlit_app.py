@@ -123,6 +123,34 @@ def _render_sources(data):
             st.markdown(chip_html, unsafe_allow_html=True)
 
 
+def _parse_via_api(uploaded_file):
+    """Send an UploadedFile to /api/v1/parse and return its extracted text.
+
+    Returns (text, warnings_list) or (None, [error_msg]) on failure. Used by
+    the weakness / summarize / defense tabs to prefill their text areas from
+    .txt / .pdf / .docx uploads without leaving Streamlit.
+    """
+    try:
+        files_data = {
+            "file": (
+                uploaded_file.name,
+                uploaded_file.getvalue(),
+                uploaded_file.type or "application/octet-stream",
+            )
+        }
+        r = requests.post(f"{API_BASE}/parse", files=files_data, timeout=120)
+        if r.status_code >= 400:
+            try:
+                err = r.json().get("detail", "")
+            except Exception:
+                err = r.text
+            return None, [f"خطأ {r.status_code}: {err}"]
+        data = r.json()
+        return data.get("text", ""), data.get("warnings", [])
+    except Exception as e:
+        return None, [f"فشل قراءة الملف: {e}"]
+
+
 def _render_confidence_breakdown(data):
     """Show the per-component confidence factors in an expander."""
     factors = data.get("confidence_factors") or {}
@@ -296,10 +324,36 @@ with tab1:
 # ═══════════ TAB 2: Summarization ═══════════
 with tab2:
     st.header("📝 تلخيص النصوص القانونية")
+    st.caption("ارفع ملفًا (.txt / .pdf / .docx) للحصول على تلخيص آلي — أو الصق النص يدويًا.")
+
+    sum_file = st.file_uploader(
+        "📎 ارفع ملفًا",
+        type=["txt", "pdf", "docx"],
+        key="sum_upload_file",
+    )
+    # When the user uploads a new file, parse it via /parse and prefill the
+    # text area. The parsed text lands in st.session_state so the user can
+    # edit before submitting; we key by filename+size to detect "new" uploads
+    # without re-parsing on every rerun.
+    if sum_file is not None:
+        file_sig = f"{sum_file.name}::{sum_file.size}"
+        if st.session_state.get("sum_last_sig") != file_sig:
+            with st.spinner(f"جاري قراءة {sum_file.name}..."):
+                parsed, warns = _parse_via_api(sum_file)
+            if parsed is not None:
+                st.session_state["sum_input"] = parsed
+                st.session_state["sum_last_sig"] = file_sig
+                st.success(f"✅ تم استخراج {len(parsed):,} حرف من {sum_file.name}")
+                for w in warns:
+                    st.info(f"ℹ️ {w}")
+            else:
+                for w in warns:
+                    st.error(f"⚠️ {w}")
+
     text = st.text_area(
-        "الصق النص القانوني هنا",
+        "النص القانوني (يمكنك التعديل قبل الإرسال)",
         height=250,
-        placeholder="المادة الأولى: ...",
+        placeholder="المادة الأولى: ... — أو ارفع ملفًا أعلاه ليُعبَّأ تلقائيًا",
         key="sum_input"
     )
     if st.button("📝 لخّص", key="sum_btn", type="primary", use_container_width=True):
@@ -318,20 +372,58 @@ with tab2:
 # ═══════════ TAB 3: Weakness Detection ═══════════
 with tab3:
     st.header("🔍 تحليل نقاط الضعف")
+    st.caption("ارفع ملف القضية (.txt / .pdf / .docx) ليُعبَّأ تلقائيًا في وقائع القضية — أو املأ الحقول يدويًا.")
+
+    weak_file = st.file_uploader(
+        "📎 ارفع ملف القضية",
+        type=["txt", "pdf", "docx"],
+        key="weak_upload_file",
+    )
+    if weak_file is not None:
+        file_sig = f"{weak_file.name}::{weak_file.size}"
+        if st.session_state.get("weak_last_sig") != file_sig:
+            with st.spinner(f"جاري قراءة {weak_file.name}..."):
+                parsed, warns = _parse_via_api(weak_file)
+            if parsed is not None:
+                st.session_state["weak_input"] = parsed
+                st.session_state["weak_last_sig"] = file_sig
+                st.success(f"✅ تم استخراج {len(parsed):,} حرف من {weak_file.name}")
+                for w in warns:
+                    st.info(f"ℹ️ {w}")
+            else:
+                for w in warns:
+                    st.error(f"⚠️ {w}")
+
     case_facts = st.text_area(
-        "وقائع القضية",
+        "وقائع القضية (يمكنك التعديل قبل التحليل)",
         height=250,
-        placeholder="المتهم متهم بارتكاب جريمة... وتم القبض عليه بتاريخ...",
+        placeholder="المتهم متهم بارتكاب جريمة... وتم القبض عليه بتاريخ... — أو ارفع ملفًا أعلاه",
         key="weak_input"
     )
+    weak_evidence = st.text_area(
+        "الأدلة (اختياري)",
+        height=120,
+        placeholder="التقرير الطبي، الشهود، كاميرات المراقبة، السوابق...",
+        key="weak_evidence",
+    )
+    weak_defendant = st.text_area(
+        "أقوال المتهم / دفوعه (اختياري)",
+        height=100,
+        placeholder="الدفاع الشرعي، انتفاء القصد، تفسير بديل للوقائع...",
+        key="weak_defendant",
+    )
+
     if st.button("🔍 حلل", key="weak_btn", type="primary", use_container_width=True):
         if case_facts:
             with st.spinner("جاري تحليل نقاط الضعف..."):
                 try:
-                    r = requests.post(f"{API_BASE}/weakness", json={"case_facts": case_facts}, timeout=180)
+                    payload = {"case_facts": case_facts}
+                    if weak_evidence and weak_evidence.strip():
+                        payload["evidence"] = weak_evidence
+                    if weak_defendant and weak_defendant.strip():
+                        payload["defendant_statement"] = weak_defendant
+                    r = requests.post(f"{API_BASE}/weakness", json=payload, timeout=180)
                     data = r.json()
-                    # The weakness response uses 'analysis' instead of 'answer'.
-                    data_for_render = {**data, "answer": data.get("analysis", "")}
                     st.markdown(f'<div class="answer-box">{data.get("analysis", "")}</div>', unsafe_allow_html=True)
                     _render_warnings(data.get("warnings"))
                     _render_metrics(data, with_retrieval=False)
@@ -343,17 +435,60 @@ with tab3:
 # ═══════════ TAB 4: Defense Memo ═══════════
 with tab4:
     st.header("📋 إنشاء مذكرة الدفاع")
-    def_facts = st.text_area("وقائع القضية", height=200, key="def_facts")
+    st.caption("ارفع ملف القضية ليُعبَّأ تلقائيًا في وقائع القضية — أو املأ الحقول يدويًا.")
+
+    def_file = st.file_uploader(
+        "📎 ارفع ملف القضية",
+        type=["txt", "pdf", "docx"],
+        key="def_upload_file",
+    )
+    if def_file is not None:
+        file_sig = f"{def_file.name}::{def_file.size}"
+        if st.session_state.get("def_last_sig") != file_sig:
+            with st.spinner(f"جاري قراءة {def_file.name}..."):
+                parsed, warns = _parse_via_api(def_file)
+            if parsed is not None:
+                st.session_state["def_facts"] = parsed
+                st.session_state["def_last_sig"] = file_sig
+                st.success(f"✅ تم استخراج {len(parsed):,} حرف من {def_file.name}")
+                for w in warns:
+                    st.info(f"ℹ️ {w}")
+            else:
+                for w in warns:
+                    st.error(f"⚠️ {w}")
+
+    def_facts = st.text_area(
+        "وقائع القضية (يمكنك التعديل قبل الإرسال)",
+        height=200,
+        placeholder="المتهم متهم بـ... وقعت الجريمة بتاريخ... — أو ارفع ملفًا أعلاه",
+        key="def_facts",
+    )
     def_weak = st.text_area("نقاط الضعف المحددة (اختياري)", height=100, key="def_weak")
+    def_evidence = st.text_area(
+        "الأدلة (اختياري)",
+        height=120,
+        placeholder="التقرير الطبي، الشهود، كاميرات المراقبة، السوابق...",
+        key="def_evidence",
+    )
+    def_defendant = st.text_area(
+        "أقوال المتهم / دفوعه (اختياري)",
+        height=100,
+        placeholder="الدفاع الشرعي، انتفاء القصد، تفسير بديل للوقائع...",
+        key="def_defendant",
+    )
 
     if st.button("📋 أنشئ المذكرة", key="def_btn", type="primary", use_container_width=True):
         if def_facts:
             with st.spinner("جاري إنشاء مذكرة الدفاع..."):
                 try:
-                    r = requests.post(f"{API_BASE}/defense", json={
-                        "case_facts": def_facts,
-                        "weaknesses": def_weak or ""
-                    }, timeout=180)
+                    payload = {"case_facts": def_facts}
+                    if def_weak and def_weak.strip():
+                        payload["weaknesses"] = def_weak
+                    if def_evidence and def_evidence.strip():
+                        payload["evidence"] = def_evidence
+                    if def_defendant and def_defendant.strip():
+                        payload["defendant_statement"] = def_defendant
+                    r = requests.post(f"{API_BASE}/defense", json=payload, timeout=180)
                     data = r.json()
                     st.markdown(f'<div class="answer-box">{data.get("memorandum", "")}</div>', unsafe_allow_html=True)
                     _render_warnings(data.get("warnings"))

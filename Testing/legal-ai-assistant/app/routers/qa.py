@@ -96,9 +96,49 @@ async def _run_qa(
     if is_llm_error(model_used):
         raise HTTPException(status_code=503, detail=LLM_ERROR_NOTICE_AR)
 
-    # 3. Evidence validation + multi-attempt corrective retry. Each retry passes
-    # the growing block-list of forbidden articles so the LLM can't re-cite them.
+    # 3. Evidence validation.
     article_pass, missing_articles = validate_evidence(answer, contexts)
+
+    # 3a. ITERATIVE RETRIEVAL — if validation flagged articles that aren't in
+    # the retrieved chunks, widen the retrieval window before paying for a
+    # corrective LLM retry. The original LLM answer often correctly identifies
+    # the relevant article; we just didn't show that article to the validator.
+    # Expanding k surfaces additional chunks; if any of them contain the
+    # missing articles, validation flips to passed for free (no LLM call).
+    iter_expansions: list = []  # k values we expanded to (for logging only)
+    if (
+        not article_pass
+        and missing_articles
+        and config.USE_ITERATIVE_RETRIEVAL
+    ):
+        seen_contexts = set(contexts)
+        for next_k in [n for n in config.ITERATIVE_K_SEQUENCE if n > k]:
+            extra_contexts, extra_sources, _ = retrieval_service.retrieve_multi_query(
+                question, k=next_k,
+            )
+            new_chunks = [c for c in extra_contexts if c not in seen_contexts]
+            if not new_chunks:
+                continue
+            iter_expansions.append(next_k)
+            contexts = contexts + new_chunks
+            seen_contexts.update(new_chunks)
+            # Append the matching source records too so the UI shows where the
+            # expansion-found chunks came from. Dedup by (source, retrieval_score)
+            # rather than full dict equality because lists aren't hashable.
+            seen_src_keys = {(s.get("source"), s.get("retrieval_score")) for s in sources}
+            for s in extra_sources:
+                key = (s.get("source"), s.get("retrieval_score"))
+                if key not in seen_src_keys:
+                    sources.append(s)
+                    seen_src_keys.add(key)
+            # Rebuild context_str so subsequent retry / rescue use the wider window.
+            context_str = "\n---\n".join(contexts)[:config.MAX_CONTEXT_CHARS]
+            article_pass, missing_articles = validate_evidence(answer, contexts)
+            if article_pass:
+                break
+
+    # 4. Multi-attempt corrective retry. Each retry passes the growing
+    # block-list of forbidden articles so the LLM can't re-cite them.
     retry_attempts = 0
     blocked_articles = list(missing_articles)
     while (
@@ -207,6 +247,11 @@ async def _run_qa(
         warnings.append(
             f"تم تضمين المستند المرفق ({attached_doc_filename or 'مستند'}, "
             f"{len(attached_doc_text)} حرفاً) في السياق."
+        )
+    if iter_expansions:
+        warnings.append(
+            "تم توسيع نطاق البحث تلقائياً إلى "
+            f"{iter_expansions[-1]} مرجعاً للعثور على الاستشهادات المطلوبة."
         )
     if not article_pass:
         warnings.append(

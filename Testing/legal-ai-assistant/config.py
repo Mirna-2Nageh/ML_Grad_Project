@@ -169,6 +169,24 @@ DOMAIN_BOOST_WEIGHT = float(os.getenv("DOMAIN_BOOST_WEIGHT", "0.05"))
 # token-per-minute budget (~4k tokens per call), causing 429s that cascade into
 # fallbacks and stalled requests. Bump to 2+ only on paid tiers.
 RETRY_MAX_ATTEMPTS = int(os.getenv("RETRY_MAX_ATTEMPTS", "1"))
+
+# Iterative retrieval: when the validate→retry→rescue pipeline still fails
+# article validation OR returns a low-confidence refusal, re-run the whole
+# pipeline at a larger k. Each step in the sequence is tried at most once per
+# request, and we stop as soon as one of them produces a passing answer.
+# Trade-off: doubles/triples latency on hard questions to recover them rather
+# than returning a hallucination warning. Easy queries (those that pass on
+# the first k) cost nothing extra.
+USE_ITERATIVE_RETRIEVAL = os.getenv("USE_ITERATIVE_RETRIEVAL", "True").lower() == "true"
+def _parse_int_list(env_val: str, fallback) -> list:
+    try:
+        out = [int(x.strip()) for x in env_val.split(",") if x.strip()]
+        return out or fallback
+    except ValueError:
+        return fallback
+ITERATIVE_K_SEQUENCE = _parse_int_list(
+    os.getenv("ITERATIVE_K_SEQUENCE", "7,14,21"), [7, 14, 21]
+)
 # Programmatic post-processing of the LLM answer: strip casual openings
 # ("حسناً"، "بالتأكيد"...) and rewrite the leaky template phrase
 # "المادة المطلوبة غير متوفرة في السياق المقدم" if the LLM embedded it mid-clause.

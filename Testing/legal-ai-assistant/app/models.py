@@ -255,3 +255,17 @@ class ChatAttachmentsListResponse(BaseModel):
     session_id: str
     attachments: List[AttachedDocInfo] = Field(default_factory=list)
     total_chars: int = Field(default=0)
+
+
+class ParseResponse(BaseModel):
+    """Response from POST /parse — file/text -> extracted text, no LLM involved.
+
+    Lets clients (Streamlit, the .NET frontend) preview / edit a document
+    before sending it to /weakness, /defense, /summarize, etc. — so users
+    can correct OCR artefacts or trim irrelevant pages before analysis.
+    """
+    text: str = Field(..., description="Extracted, Arabic-cleaned text from the file or pasted input")
+    filename: str = Field(default="", description="Original filename, or 'pasted-text' for raw strings")
+    content_type: str = Field(default="", description="File extension: .txt / .pdf / .docx / .text")
+    char_count: int = Field(default=0, description="Length of the extracted text in characters")
+    warnings: List[str] = Field(default_factory=list, description="Non-fatal issues (truncation, encoding fallback, ...)")
