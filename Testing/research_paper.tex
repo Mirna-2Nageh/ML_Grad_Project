@@ -1,0 +1,1065 @@
+% =============================================================================
+%  Nour — A Hallucination-Resistant RAG Pipeline for Egyptian Criminal Law
+%
+%  Format:  Elsevier Procedia Computer Science (matches teeem.pdf / arabicRag.pdf)
+%  Engine:  XeLaTeX (required for Arabic content)
+%
+%  Compile:
+%       xelatex research_paper.tex
+%       xelatex research_paper.tex     % second pass for cross-references
+%
+%  Recommended workflow: upload to Overleaf, set Compiler = XeLaTeX.
+% =============================================================================
+\documentclass[final,1p,times]{elsarticle}
+
+% --- Core packages -----------------------------------------------------------
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{url}
+\usepackage{hyperref}
+\hypersetup{colorlinks=true,linkcolor=blue,urlcolor=blue,citecolor=blue}
+
+% --- TikZ (pipeline figure) --------------------------------------------------
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta,shapes.geometric,calc,fit,backgrounds}
+
+% --- Arabic support via polyglossia (XeLaTeX) --------------------------------
+% Compiling with pdfLaTeX will not render Arabic glyphs — use XeLaTeX.
+\usepackage{fontspec}
+\usepackage{polyglossia}
+\setmainlanguage{english}
+\setotherlanguage{arabic}
+\newfontfamily{\arabicfont}[Script=Arabic]{Amiri}
+\newcommand{\ar}[1]{\textarabic{#1}}
+
+% --- Elsevier Procedia front-matter housekeeping -----------------------------
+\journal{Procedia Computer Science}
+
+\begin{document}
+
+\begin{frontmatter}
+
+% Conference banner (mirrors the Procedia ACLing style of [1] and [5])
+\dochead{International Conference on AI in Computational Linguistics}
+
+\title{Nour: A Hallucination-Resistant Retrieval-Augmented Generation Pipeline
+for Egyptian Criminal Law in Arabic}
+
+% Authors --------------------------------------------------------------------
+\author[a]{Mirna Nageh\corref{cor1}}
+\ead{novagatesemployee@gmail.com}
+\author[a]{Wageh Mostafa}
+\author[a]{Seif Sherif}
+\author[a]{Mariam Mohamed}
+\author[a]{Mayar Mohammed}
+
+\address[a]{Faculty of Computer Science, Graduation Project, Egypt}
+
+\cortext[cor1]{Corresponding author.}
+
+% Abstract -------------------------------------------------------------------
+\begin{abstract}
+Retrieval-Augmented Generation (RAG) has emerged as the dominant architecture
+for grounding large language models on domain knowledge, yet its application
+to Arabic legal information retrieval continues to suffer from hallucinated
+statutory citations and confabulation when retrieval surfaces topically-related
+but legally-inadequate context. We present \textbf{Nour}, a production-grade
+Arabic legal assistant for the Egyptian Criminal Code (\ar{قانون العقوبات})
+and the Code of Criminal Procedure (\ar{قانون الإجراءات الجنائية}). Our
+contribution is twofold. First, we describe the construction of an Egyptian
+criminal-law corpus assembled from scratch: 933~legacy-format source files
+(818~\texttt{.doc}, 112~\texttt{.pdf}, 3~\texttt{.docx}) gathered from
+authoritative Egyptian legal collections, manually OCR-processed and cleaned
+into 1{,}057 UTF-8 documents and indexed as 47{,}028 chunks. The resulting
+dataset is released publicly on HuggingFace as
+\emph{Egyptian\_Criminal\_Legal\_Assistant\_RAG\_V2}. Second, we introduce a
+six-layer grounding-defence pipeline---input gating, citation-grounding
+prompts with substantive-vs-procedural law disambiguation, evidence
+validation, corrective retry with a block-list, an article-lookup rescue
+indexing 1{,}494 distinct statutory articles, iterative retrieval with
+adaptive $k$-expansion, and deterministic answer post-processing---layered on
+top of a hybrid retrieval baseline (FAISS + BM25 + Reciprocal Rank Fusion +
+cross-encoder reranking). On a 28-question Arabic legal benchmark spanning
+substantive and procedural questions, the complete system reduces the
+hallucinated-citation rate from a baseline of 28.6\,\% to \textbf{0.0\,\%} and
+the evidence-validation pass rate from 71.4\,\% to \textbf{100\,\%}. We also
+report a negative result on synonym-based query expansion. We release the
+corpus, the system, the five-version evaluation trail, and a CLI test harness.
+\end{abstract}
+
+\begin{keyword}
+Arabic NLP \sep Retrieval-Augmented Generation \sep Legal Information
+Retrieval \sep Hallucination Mitigation \sep Egyptian Criminal Law \sep
+Article-Lookup Rescue \sep Iterative Retrieval \sep Dataset Construction
+\end{keyword}
+
+\end{frontmatter}
+
+% =============================================================================
+\section{Introduction}\label{sec:intro}
+
+The Arabic language is spoken by approximately 422~million people across more
+than twenty sovereign states, yet it remains comparatively under-served by
+modern natural language processing (NLP) systems~\cite{elbeltagy2024}. This
+under-representation is especially acute in \emph{Arabic legal} NLP, where
+Modern Standard Arabic (MSA), domain-specific terminology, dialectal
+variation, and the morphological richness of the language compound the
+standard challenges of grounded language modelling.
+
+Retrieval-Augmented Generation (RAG) has become the dominant architecture for
+closing the gap between a frozen LLM's parametric memory and the dynamic,
+citation-heavy demands of legal practice. By retrieving relevant passages
+from a curated corpus and conditioning the generator on those passages, RAG
+can in principle produce answers that are both fluent and
+traceable~\cite{hrimech2025,miniraq}. However, recent surveys of Arabic legal
+RAG---including the Moroccan family-code study of Hrimech et~al.\cite{hrimech2025}
+and the morphologically-aware retrieval study of Aboasal et~al.\cite{aboasal2025}---identify
+a recurring failure pattern: the LLM remains liable to \emph{hallucinate
+statutory citations}, even when grounded retrieval is available, particularly
+when the user's question maps to articles that were not surfaced in the
+retrieval top-$k$.
+
+This work makes two complementary contributions. We first describe the
+\emph{construction of an Egyptian criminal-law corpus from scratch}: 933
+legacy-format source files (overwhelmingly \texttt{.doc} legacy binaries
+requiring manual OCR) gathered from authoritative collections of Egyptian
+legal text and processed into a clean 1{,}057-document corpus, released
+publicly on HuggingFace as \emph{Egyptian\_Criminal\_Legal\_Assistant\_RAG\_V2}.
+We then present \textbf{Nour} (\ar{نور}), a hallucination-resistant Arabic
+legal-AI assistant built on top of this corpus. Nour layers a six-mechanism
+grounding-defence pipeline on top of a standard hybrid-retrieval architecture
+(FAISS dense embeddings + BM25 sparse search, fused via Reciprocal Rank
+Fusion, with cross-encoder reranking). We argue---and our evaluation
+empirically demonstrates---that \emph{no single technique} is sufficient for
+hallucination suppression in Arabic legal RAG; a layered approach combining
+input filtering, prompt engineering, post-hoc validation, article-level
+metadata lookup, and answer rewriting is required.
+
+\subsection{Contributions}
+
+\begin{enumerate}
+  \item A publicly-released Egyptian-criminal-law corpus, manually
+        OCR-processed from 818 legacy \texttt{.doc} binaries and 112 PDFs into
+        1{,}057 UTF-8 documents covering the Penal Code, the Code of Criminal
+        Procedure, cassation rulings, criminal-law treatises, and forensic
+        medicine references (Section~\ref{sec:dataset}).
+  \item A \textbf{multi-stage grounding-defence pipeline}
+        (Section~\ref{sec:defence}) reducing the hallucinated-citation rate
+        from 28.6\,\% to 0.0\,\% on our benchmark---an absolute reduction of
+        28.6 percentage points and an 8-fold relative improvement.
+  \item An \textbf{article-lookup rescue subsystem} (Section~\ref{sec:rescue})
+        that indexes 1{,}494 distinct Egyptian-law article numbers from chunk
+        metadata at startup and uses them as a deterministic second-chance
+        grounding source when post-generation evidence validation flags a
+        missing citation.
+  \item \textbf{Iterative retrieval with adaptive $k$-expansion}
+        (Section~\ref{sec:iter}) that widens retrieval to $k\!\in\!\{14,21\}$
+        when validation fails---without an additional LLM call.
+  \item A detailed \textbf{prompt-engineering recipe}
+        (Section~\ref{sec:prompts}) including substantive-vs-procedural law
+        disambiguation, casual-opener prohibition, fragment refusal, and a
+        block-list retry prompt---together with the leak-detection regex
+        used in post-processing.
+  \item A \textbf{five-version evaluation trail} (Section~\ref{sec:eval}) with
+        per-version CSV outputs, allowing reproducible auditing of every
+        architectural change, plus a \emph{negative result} (Section~\ref{sec:limits})
+        on heuristic synonym expansion as a cautionary data point for future
+        Arabic RAG work.
+  \item A document-upload subsystem (Section~\ref{sec:upload}) supporting
+        three retention semantics across \texttt{.txt}, \texttt{.pdf}, and
+        \texttt{.docx} formats.
+\end{enumerate}
+
+% =============================================================================
+\section{Related Work}\label{sec:related}
+
+\subsection{Arabic RAG foundations}
+
+El-Beltagy and Abdallah~\cite{elbeltagy2024} present a foundational case
+study of Arabic RAG, evaluating multiple semantic-embedding models and LLMs
+in the retrieval and generation stages respectively, and explicitly
+investigating the impact of dialectal variation between document language and
+query language. Their work establishes the baseline architectural template
+that the present paper inherits---a semantic retriever feeding a generator
+LLM---while flagging the central challenge of selecting an embedding model
+that captures the semantic nuances of Arabic without over-relying on
+English-dominated pre-training. Alghamdi et~al.\cite{alghamdi2023} focus on
+the retriever component, demonstrating that retrieval quality is the
+dominant factor in downstream answer correctness---a finding our own
+iterative-retrieval mechanism (Section~\ref{sec:iter}) extends by treating
+retrieval $k$ as an adaptively-tunable parameter rather than a fixed
+hyperparameter.
+
+\subsection{Arabic legal RAG}
+
+Hrimech et~al.\cite{hrimech2025} present the most directly comparable prior
+work: a RAG system for the \emph{Moroccan} family code, built on BGE-m3 with
+a custom dataset of 2{,}500 Arabic question--answer pairs. They explicitly
+call out the challenges of \emph{legal-terminology adherence}, \emph{content
+validity of reproduced clauses}, and the \emph{scarcity of annotated Arabic
+legal corpora}. The dataset contribution of the present work
+(Section~\ref{sec:dataset}) targets the third concern directly: an Egyptian
+criminal-law corpus released publicly under an open licence.
+
+Aboasal et~al.\cite{aboasal2025} approach Arabic legal IR from a
+\emph{morphological-and-semantic} angle, introducing a synthetic benchmark of
+500 articles and 1{,}000 Q\&A pairs and evaluating the impact of Farasa-based
+morphological segmentation on multiple retrievers. Their hybrid
+Farasa-BM25~+~Ada~v3 configuration reaches MAP$=0.8304$ and
+nDCG@10$=0.8626$---figures that informed our choice to keep BM25 as a
+complementary signal alongside dense FAISS retrieval
+(Section~\ref{sec:arch}) rather than abandoning it in favour of pure dense
+retrieval. We extend their hybrid-retrieval philosophy by adding a
+post-generation defence layer (Section~\ref{sec:defence}) which they do
+not address.
+
+\subsection{Benchmarking Arabic legal reasoning}
+
+Abu Shairah et~al.\cite{alarb2025} introduce \textbf{ALARB}, an Arabic Legal
+Argument Reasoning Benchmark comprising over 13{,}000 commercial court cases
+from Saudi Arabia, with each case annotated with facts, the court's reasoning
+chain, the verdict, and the cited regulatory clauses. ALARB sets the
+methodological precedent for our evaluation harness: a benchmark whose
+primary axis is not the linguistic \emph{fluency} of the generated text but
+its \emph{legal-grounding fidelity}---specifically, whether cited statutory
+articles can be traced to retrieved or otherwise-available source text. Our
+28-question benchmark is far smaller in scale, by design, but inherits the
+philosophy that \emph{what an LLM cites matters more than how it phrases the
+citation}.
+
+\subsection{RAG tooling literature}
+
+A pragmatic introduction to RAG architecture is provided by the Mini-RAG
+documentation~\cite{miniraq}, which decomposes the pipeline into retrieval,
+augmentation, and generation. While not a peer-reviewed publication, the
+document is representative of the implementation-oriented tutorial literature
+that informed many practical design decisions in our system.
+
+\subsection{Positioning of the present work}
+
+Relative to~\cite{elbeltagy2024,hrimech2025}, we shift the locus of grounding
+from the retrieval stage alone to a \emph{post-generation defence pipeline}:
+even with state-of-the-art retrieval, an LLM may emit a memory-based citation
+that retrieval did not provide, and detecting and rescuing this case is at
+least as important as improving the retriever. Relative
+to~\cite{alghamdi2023,aboasal2025}, we share the focus on hybrid retrieval
+but extend the operational regime to include iterative $k$-expansion and
+article-number-keyed rescue. Relative to~\cite{alarb2025}, we adopt the
+grounding-fidelity evaluation philosophy but apply it to an Egyptian
+criminal-law corpus rather than a Saudi commercial-law one. None of the
+prior works release an open Egyptian-criminal-law corpus comparable in scope
+to the one introduced here.
+
+% =============================================================================
+\section{Dataset Construction}\label{sec:dataset}
+
+A central practical obstacle to Arabic legal RAG is the \emph{scarcity of
+clean, machine-readable Egyptian legal text}~\cite{hrimech2025,aboasal2025}.
+Authoritative collections of Egyptian criminal-law material---particularly
+cassation-court rulings and the historical foundations of the Penal Code---
+exist almost exclusively as scanned PDFs and as legacy Microsoft Word 97/2003
+binaries (\texttt{.doc}). Both formats are essentially unreadable to standard
+NLP pipelines without manual intervention. The Egyptian-criminal-law corpus
+we release with this work was constructed from scratch to address exactly
+this gap.
+
+\subsection{Source collection}
+
+We assembled an initial set of 933 source files (Table~\ref{tab:datasrc})
+covering ten distinct collections of Egyptian criminal-law material:
+the Penal Code with its explanatory memorandum, the Code of Criminal
+Procedure (with multiple authoritative commentaries), the four-volume
+\emph{Rules Established by the Court of Cassation}, the four-volume
+\emph{Most Recent Principles Issued by the Criminal Chambers}, the
+\emph{Encyclopedia of Cassation Criminal Rulings}, the \emph{Quarter-Century
+Collection (1931--1955)}, the \emph{Forensic Medicine Series}, separate
+collections of \emph{Felonies (\ar{جنايات})} and \emph{Misdemeanours
+(\ar{جنح})}, and a folder of criminal-law textbooks.
+
+\begin{table}[!htb]
+\centering
+\small
+\caption{Source corpus by collection, before and after the manual OCR / cleaning
+pass. The dominance of \texttt{.doc} legacy binaries in the encyclopedia
+(\protect\ar{موسوعة احكام النقض الجنائية}, 793 files) drove most of the
+manual-conversion effort. Some collections were re-organised during cleaning
+(e.g., the original \protect\ar{جنح} and parts of \protect\ar{احكام} were
+re-classified by offence type into \protect\ar{جنايات} and
+\protect\ar{محكمه النقض} based on the case content).}
+\label{tab:datasrc}
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.10}
+\begin{tabular}{lrrrr|rrrr}
+\toprule
+& \multicolumn{4}{c|}{\textbf{Before (\texttt{OriginalData/})}}
+& \multicolumn{4}{c}{\textbf{After (\texttt{final\_total\_dataset/})}} \\
+Collection
+& \texttt{.doc} & \texttt{.pdf} & \texttt{.docx} & tot
+& \texttt{.pdf} & \texttt{.docx} & \texttt{.txt} & tot \\
+\midrule
+\ar{موسوعة احكام النقض الجنائية} (Encyclopedia of Cassation Rulings)
+& 793 &   0 & 0 & 793 & 122 & 0 & 678 & 800 \\
+\ar{قانون الجنائي} (Criminal-law treatises)
+&  16 &  44 & 3 &  63 &  38 & 0 &  21 &  59 \\
+\ar{محكمه النقض} (Cassation Court rulings)
+& --- & --- & --- & --- &  25 & 0 &  53 &  78 \\
+\ar{جنايات} (Felonies)
+& --- & --- & --- & --- &  23 & 0 &  27 &  50 \\
+\ar{اجراءات جنائية} (Criminal Procedure)
+&   8 &  20 & 0 &  28 &  16 & 1 &  12 &  29 \\
+\ar{سلسلة الطب الشرعي} (Forensic Medicine)
+&   0 &  12 & 0 &  12 &   0 & 0 &  12 &  12 \\
+\ar{مجموعة عمر الجنائية} (Omar Criminal Collection)
+&   0 &   7 & 0 &   7 &   7 & 0 &   0 &   7 \\
+\ar{جنح} (Misdemeanours)
+&   0 &   6 & 0 &   6 & \multicolumn{4}{c}{(merged into \ar{جنايات})} \\
+\ar{القواعد \ldots محكمة النقض} (Cassation Rules, 4~vol.)
+&   0 &   4 & 0 &   4 &   0 & 0 &   4 &   4 \\
+\ar{المستحدث من المبادئ \ldots} (Recent Criminal Principles)
+&   0 &   4 & 0 &   4 &   4 & 0 &   0 &   4 \\
+\ar{مجموعة الربع قرن (1931--1955)} (Quarter-Century Collection)
+&   0 &   4 & 0 &   4 & \multicolumn{4}{c}{(consolidated)} \\
+\ar{احكام} (Judgments)
+&   0 &   3 & 0 &   3 & \multicolumn{4}{c}{(consolidated)} \\
+(root-level statutes / textbooks)
+&   1 &   8 & 0 &   9 &   3 & 0 &  11 &  14 \\
+\midrule
+\textbf{TOTAL}
+& \textbf{818} & \textbf{112} & \textbf{3} & \textbf{933}
+& \textbf{238} & \textbf{1} & \textbf{818} & \textbf{1{,}057} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The dominance of \texttt{.doc} legacy binaries (87.3\,\%) is characteristic
+of Egyptian government and university legal archives, which date primarily to
+the 1990s and early 2000s. Modern open-source NLP toolchains cannot reliably
+extract text from this format without LibreOffice-grade office conversion,
+and even after conversion the output typically requires substantial cleaning
+of footnote numbering, page-header artefacts, and OCR-style character
+confusion (\ar{ه}/\ar{ة}, \ar{ي}/\ار{ى}, the four alef forms, and
+Arabic-Indic vs. Western digits).
+
+\subsection{Manual OCR and cleaning pipeline}
+
+Each of the 818 legacy \texttt{.doc} files was opened, converted, and
+manually cleaned. The scanned PDFs were processed first with
+\texttt{pdftotext -layout -enc UTF-8} (from poppler-utils) where the
+underlying text layer was retrievable, and subjected to a second OCR pass
+where it was not. The output of each pipeline was then manually reviewed for:
+\begin{itemize}
+  \item paragraph-break preservation across page boundaries;
+  \item removal of running headers, footers, and page numbers;
+  \item normalisation of the four alef forms (\ar{أ}, \ar{إ}, \ar{آ},
+        \ar{ا}) into a single canonical alef;
+  \item harmonisation of digit forms (Arabic-Indic \ar{٠}--\ar{٩} and
+        Eastern Arabic-Indic \ar{۰}--\ar{۹} mapped to Western 0--9);
+  \item removal of common boilerplate phrases
+        (\ar{بسم الله الرحمن الرحيم}, \ar{باسم الشعب},
+        and stereotyped court-decision openers);
+  \item preservation of article-number markers
+        (\ar{المادة}, \ar{المواد}, \ar{مادة}) so the downstream
+        \texttt{extract\_article\_references} extractor (Section~\ref{sec:validate})
+        could find them.
+\end{itemize}
+
+The resulting corpus (\texttt{final\_total\_dataset/}) contains 1{,}057
+documents: 818 cleaned \texttt{.txt} files (one per original \texttt{.doc}),
+238 cleaned PDFs retained where the original layout was load-bearing for
+legal meaning (judgment formatting, citation tables), and 1 \texttt{.docx}.
+The corpus is organised into nine top-level subdirectories preserving the
+original collection taxonomy. Total cleaned-text volume across the corpus is
+$\sim$200\,MB of UTF-8 Arabic.
+
+\subsection{Public release}
+
+The cleaned corpus has been released publicly on HuggingFace as
+\emph{Egyptian\_Criminal\_Legal\_Assistant\_RAG\_V2}\footnote{
+\url{https://huggingface.co/datasets/Mirna2Nageh/Egyptian_Criminal_Legal_Assistant_RAG_V2}
+}.
+To our knowledge it is the first open-licensed Arabic-legal corpus focused
+on Egyptian criminal law to be made available at this scope. We hope it
+addresses, in part, the \emph{scarcity of annotated Arabic legal corpora}
+explicitly identified as a barrier by~\cite{hrimech2025}.
+
+\subsection{Indexing}
+
+The cleaned corpus is processed by doc-type-aware chunking
+(\texttt{CHUNKING\_CONFIGS}: 2{,}000 chars / 200 overlap for penal-code and
+cassation material, 3{,}000/400 for case files, 2{,}048/300 for procedural
+texts and rule collections), embedded with a multilingual sentence-transformer,
+and indexed in FAISS alongside a parallel BM25 index. The resulting index
+contains 47{,}028 chunks, of which 14{,}882 (31.6\,\%) carry
+\texttt{referenced\_articles} metadata covering 1{,}494 distinct Egyptian-law
+article numbers---a property exploited by the article-lookup rescue
+mechanism (Section~\ref{sec:rescue}).
+
+% =============================================================================
+\section{System Architecture}\label{sec:arch}
+
+Nour is implemented as a FastAPI service backed by the 47{,}028-chunk
+retrieval index described in Section~\ref{sec:dataset}. The base architecture
+follows the pattern established by~\cite{elbeltagy2024,hrimech2025,alghamdi2023}.
+
+\paragraph{Hybrid retrieval} A user query is encoded with a multilingual
+sentence-transformer (\texttt{paraphrase-multilingual-MiniLM-L12-v2}) and
+used to query a FAISS index of pre-computed chunk embeddings. In parallel,
+the same query is BM25-tokenised (with Arabic-Indic digit normalisation and
+alef-form unification) and scored via a \texttt{rank\_bm25} BM25Okapi index.
+The top-30 results from each branch are fused using \textbf{Reciprocal Rank
+Fusion} with the canonical RRF constant $k_{\text{RRF}}=60$:
+\begin{equation}
+\mathrm{RRF}(d) \;=\; \sum_{r \in R}\,\frac{1}{k_{\text{RRF}} + \mathrm{rank}_r(d)}
+\label{eq:rrf}
+\end{equation}
+where $R$ is the set of ranked lists and $\mathrm{rank}_r(d)$ is the rank of
+document $d$ in list $r$. The fused top-30 candidates are passed to a
+cross-encoder reranker (BGE-Reranker-v2-M3 with sigmoid-bounded outputs)
+which produces the final top-$k$ set (default $k=7$).
+
+\paragraph{Context expansion and expert rules} Each surviving chunk is grown
+by one same-source neighbour on each side, providing $\sim 2\times$ the
+textual context per chunk while preventing cross-document contamination.
+Expert-rule entries are then prepended to the retrieved context when matched
+by keyword from a curated \texttt{expert\_rules.json}.
+
+\paragraph{Generation} The final context and the user's question are
+formatted into a prompt template enforcing strict textual adherence and
+dispatched to the LLM provider chain. Production uses Groq's
+\texttt{llama-3.3-70b-versatile} as the primary, with Google Gemini and
+OpenRouter Qwen as fallback tiers, with multi-key rotation handling
+per-minute rate limits.
+
+\paragraph{Confidence scoring} A weighted heuristic over four signals---mean
+rerank score, source count (capped at 5), article-validation pass/fail, and
+topic-match (encyclopedia folder taxonomy)---produces a confidence value
+in $[0,1]$:
+\begin{equation}
+\mathrm{conf} \;=\; \sum_{i \in \{\mathrm{rr},\,\mathrm{src},\,\mathrm{art},\,\mathrm{top}\}} w_i \cdot s_i
+\label{eq:conf}
+\end{equation}
+with $w_{\mathrm{rr}}=0.45$, $w_{\mathrm{src}}=0.20$,
+$w_{\mathrm{art}}=0.20$, $w_{\mathrm{top}}=0.15$. Answers below the
+threshold (default 0.5) carry a low-confidence warning.
+
+% =============================================================================
+\section{Grounding-Defence Pipeline}\label{sec:defence}
+
+Figure~\ref{fig:pipeline} illustrates the end-to-end request flow, with the
+four defence layers (input gate, iterative retrieval, corrective retry,
+article-lookup rescue) that fire conditionally on evidence-validation failure.
+
+\begin{figure}[!t]
+\centering
+\begin{tikzpicture}[
+  >=Latex,
+  node distance=7mm and 10mm,
+  font=\footnotesize,
+  box/.style={draw, rounded corners=3pt, align=center, minimum height=7mm,
+              minimum width=38mm, inner sep=2.5pt, line width=0.4pt},
+  io/.style={box, fill=blue!8, draw=blue!50},
+  stage/.style={box, fill=gray!8, draw=gray!60},
+  llm/.style={box, fill=orange!10, draw=orange!70, line width=0.6pt},
+  defence/.style={box, fill=green!8, draw=green!55, line width=0.5pt},
+  reject/.style={box, fill=red!8, draw=red!60, minimum width=28mm},
+  decision/.style={diamond, draw, aspect=2.6, align=center, fill=yellow!12,
+                   draw=yellow!70!black, line width=0.4pt, inner sep=0pt,
+                   minimum height=8mm, minimum width=32mm},
+  flow/.style={->, line width=0.55pt, draw=black!75},
+  fail/.style={->, line width=0.55pt, draw=red!70, dashed},
+  freeflow/.style={->, line width=0.55pt, draw=green!60!black, dotted},
+  passlbl/.style={font=\scriptsize\itshape, text=green!50!black},
+  faillbl/.style={font=\scriptsize\itshape, text=red!70!black},
+  freelbl/.style={font=\scriptsize\itshape, text=green!50!black},
+]
+\node[io] (query) {User Query};
+\node[decision, below=of query] (gate) {Input Gate?\\\scriptsize (\S\ref{sec:gate})};
+\node[reject, right=12mm of gate] (rejected) {Refusal\\\scriptsize ($\sim$9\,ms, no LLM)};
+\node[stage, below=of gate] (retrieve) {Hybrid Retrieval\\\scriptsize FAISS + BM25 $\xrightarrow{\mathrm{RRF}}$ Rerank $\to$ top-$k$};
+\node[stage, below=of retrieve] (expand) {Context Expansion + Expert Rules};
+\node[llm, below=of expand] (gen) {LLM Generation\\\scriptsize (citation-grounding prompt, \S\ref{sec:prompts})};
+\node[decision, below=9mm of gen] (validate) {Evidence Valid?\\\scriptsize (\S\ref{sec:validate})};
+\node[defence, below=11mm of validate] (postproc) {Answer Post-Processing\\\scriptsize strip openers, fix refusal (\S\ref{sec:postproc})};
+\node[io, below=of postproc] (resp) {Response + Confidence};
+
+\node[defence, right=18mm of validate, yshift=6mm] (iter) {Iterative Retrieval\\\scriptsize widen $k\in[14,21]$, no LLM (\S\ref{sec:iter})};
+\node[defence, below=6mm of iter] (retry) {Corrective Retry\\\scriptsize block-list (\S\ref{sec:retry})};
+\node[defence, below=6mm of retry] (rescue) {Article-Lookup Rescue\\\scriptsize 1{,}494-article index (\S\ref{sec:rescue})};
+
+\draw[flow] (query) -- (gate);
+\draw[flow] (gate.east) -- node[faillbl, above, pos=0.5]{fragment} (rejected.west);
+\draw[flow] (gate.south) -- node[passlbl, right, pos=0.5]{meaningful} (retrieve.north);
+\draw[flow] (retrieve) -- (expand);
+\draw[flow] (expand) -- (gen);
+\draw[flow] (gen) -- (validate);
+\draw[flow] (validate.south) -- node[passlbl, right, pos=0.4]{pass} (postproc.north);
+\draw[flow] (postproc) -- (resp);
+\draw[fail] (validate.east) -- ++(7mm,0) |- (iter.west);
+\node[faillbl] at ($(validate.east)+(16mm,2mm)$) {fail};
+\draw[fail] (iter.south) -- node[faillbl, right, pos=0.4]{still} (retry.north);
+\draw[fail] (retry.south) -- node[faillbl, right, pos=0.4]{still} (rescue.north);
+\draw[freeflow] (iter.west) -- ++(-5mm,0) |- node[freelbl, above, pos=0.3]{pass (no LLM)} (postproc.east);
+\draw[flow] (retry.west) -- ++(-3mm,0) |- (postproc.east);
+\draw[flow] (rescue.west) -- ++(-3mm,0) |- (postproc.east);
+\begin{scope}[on background layer]
+  \node[draw=gray!50, dashed, rounded corners=2pt, inner sep=3pt,
+        fit=(iter)(retry)(rescue)] (defbox) {};
+  \node[anchor=south, font=\scriptsize\itshape, text=gray!50!black]
+        at (defbox.north) {Conditional defence layers};
+\end{scope}
+\end{tikzpicture}
+\caption{End-to-end request flow. Solid black arrows = unconditional pipeline;
+dashed red = taken on validation failure; dotted green = ``free'' recovery
+via iterative retrieval without LLM call. Colour coding:
+\textcolor{blue!50}{blue}=I/O, \textcolor{gray!60}{grey}=retrieval,
+\textcolor{orange!70}{orange}=LLM, \textcolor{green!55}{green}=defence layers
+(contribution of this work).}
+\label{fig:pipeline}
+\end{figure}
+
+\subsection{Input Gating}\label{sec:gate}
+
+In baseline evaluation, fragmentary user inputs (markdown headings,
+single-word bullets such as \ar{* الجناية}, or colon-terminated incomplete
+sentences such as \ar{1. ما المقصود بمبدأ:}) frequently triggered the LLM
+to \emph{fabricate} a plausible-sounding question and answer it. These cases
+accounted for 5 of 28 (17.9\,\%) hallucination instances in baseline
+measurements.
+
+A pure function \texttt{is\_meaningful\_query} evaluates the input against a
+sequence of regex predicates---minimum Arabic-character count, leading
+markdown-header detection, leading list-bullet detection, leading
+numbered-fragment detection, trailing-colon check---and short-circuits
+failing inputs with a 9-millisecond response. The gate is bypassed when an
+uploaded document is present (Section~\ref{sec:upload}). In the v8 evaluation
+the gate caught and rejected 8 of 28 inputs without incurring an LLM call.
+
+\subsection{Citation-Grounding Prompts and Law-Naming Disambiguation}\label{sec:prompts}
+
+The prompt-engineering work is itself a substantial contribution and we
+document it in detail here. Two distinct prompt-level failure modes were
+observed in baseline measurements: (a)~the LLM cites article numbers from
+training memory that appear plausible but are not in the retrieved context;
+(b)~the LLM confuses substantive (Penal Code) with procedural (Code of
+Criminal Procedure) law, citing the wrong code for a given query. For
+example, baseline answers to questions about pre-trial detention
+(\ar{التوقيف الاحتياطي}) frequently cited Article~300 \emph{of the Penal
+Code}---when Article~300 of the Penal Code does not address that topic; the
+relevant article is in the Code of Criminal Procedure.
+
+The Nour prompt suite addresses these failure modes with eight rules
+explicitly enforced in the system and user prompts:
+
+\begin{enumerate}
+  \item \emph{Strict textual adherence}: ``Use the provided texts ONLY''---no
+        appeals to general legal principles or international law.
+  \item \emph{Citation grounding (absolute)}: ``Cite an article number ONLY
+        if those exact digits appear in the Context below.'' If not present,
+        write the canonical refusal phrase
+        \ar{المادة المطلوبة غير متوفرة في السياق المقدم}.
+  \item \emph{Law-naming disambiguation}: procedural matters
+        (\ar{التوقيف الاحتياطي، التحقيق، التفتيش، الطعن، النقض}) must be
+        cited from \ar{قانون الإجراءات الجنائية}; substantive matters
+        (\ar{تعريف الجرائم، أركانها، عقوباتها}) from \ar{قانون العقوبات}.
+        Always name the law explicitly when citing.
+  \item \emph{Element matching for offence selection}: e.g., for
+        injury/assault questions, \ar{المادة 240} requires a permanent
+        impairment, \ar{المادة 241} requires $>$\,20 days of incapacity,
+        \ar{المادة 242} covers lesser injuries; the prompt explicitly
+        instructs the LLM to match the article to the facts rather than
+        defaulting to the harshest available.
+  \item \emph{Multi-charge handling}: if the case facts describe more than
+        one offence (e.g., assault + theft), enumerate the distinct charges
+        and analyse each in its own sub-section.
+  \item \emph{No casual openings}: explicit prohibition on \ar{حسناً},
+        \ar{بالتأكيد}, \ar{تمام}, \ar{طبعاً}, and similar persona-breaking
+        fillers; the first word must be part of the answer itself (e.g.,
+        \ar{وفقاً للمادة \dots} or \ar{تنص المادة \dots}).
+  \item \emph{Incomplete-input handling}: if the user's input is a fragment,
+        a heading, a single word, or a sentence ending with a colon, do NOT
+        fabricate a question to answer; reply with a polite request for a
+        complete question.
+  \item \emph{Ambiguity protocol}: if the question is broad (e.g.,
+        \ar{ما عقوبة التزوير؟}), provide a brief overview of the cases in
+        context and explicitly ask the user to specify the determining
+        factors (offender role / document type / weapon / time / injury
+        severity) \emph{relevant} to that specific crime---not irrelevant
+        factors (e.g., never ask about ``document type'' for a homicide).
+\end{enumerate}
+
+In addition, two specialised prompts are used by the defence pipeline:
+\texttt{qa\_retry\_ungrounded} for the corrective retry
+(Section~\ref{sec:retry}), which receives the original draft and an explicit
+list of forbidden article numbers; and \texttt{qa\_rescue\_with\_lookup}
+for the article-lookup rescue (Section~\ref{sec:rescue}), which receives
+the original retrieved context plus a separate ``Additional References''
+block from the article-lookup service and explicitly forbids inventing
+neighbouring articles or using a passage about a different law.
+
+\subsection{Evidence Validation}\label{sec:validate}
+
+Every LLM output is post-processed by a regex-based evidence validator. A
+canonical extractor (\texttt{extract\_article\_references})---operating on
+Arabic-Indic-digit-normalised text---identifies every article number cited
+in the answer. The set of cited articles is compared against the set of
+article numbers extracted from the retrieved context (concatenated).
+Articles cited but not present in the context are flagged as \textbf{missing}
+and the answer is marked as failing validation. The same extractor is used
+on both sides to avoid spurious mismatches caused by plural-form variations
+(\ar{المواد 211، 212، 213} vs \ar{المادة 211}).
+
+\subsection{Corrective Retry with Forbidden-Article Block-List}\label{sec:retry}
+
+When evidence validation flags missing articles, the system re-prompts the
+LLM with a correction prompt that includes the original draft and an
+\emph{explicit list} of article numbers the LLM must NOT cite. The retry is
+run at most \texttt{RETRY\_MAX\_ATTEMPTS} times (default~1---a tuning
+informed by the Groq free-tier 6{,}000~tokens-per-minute budget). The
+retry's output is accepted only if it strictly improves the missing-article
+count.
+
+\subsection{Article-Lookup Rescue}\label{sec:rescue}
+
+Even after retry, a class of hallucinations persisted: the LLM would cite an
+article that \emph{did} exist in the dataset, just not in the top-$k$ chunks
+for that specific query. Inspection revealed that of 47{,}028 chunks,
+14{,}882 (31.6\,\%) carry \texttt{referenced\_articles} metadata covering
+1{,}494 distinct article numbers---including, for instance, 34~chunks
+referencing Article~87 and 14~chunks referencing Article~300, both articles
+the baseline LLM cited ``from memory.''
+
+At startup, \texttt{ArticleLookupService.load()} builds an index
+$\{\text{article\_no} \rightarrow [\text{chunk\_index},\ldots]\}$. Chunks
+within each article's list are ranked by a three-tier quality score:
+\begin{enumerate}
+  \item \textbf{Document-type tier}: \texttt{penal\_code} and
+        \texttt{criminal\_procedure} (the actual law text) > cassation
+        material > encyclopedia / international-law material. This prevents,
+        for example, Rome-Statute (ICC) passages from being preferred over
+        chunks from the Egyptian code.
+  \item \textbf{Article focus}: chunks referencing fewer distinct articles
+        are preferred (they are more focused on the queried article).
+  \item \textbf{Text length}: longer chunks as a final tiebreaker.
+\end{enumerate}
+
+When post-retry evidence validation still flags missing articles, the rescue
+path is triggered: the top-2 chunks for each missing article are appended to
+the context for one more LLM call. The rescued answer is validated against
+the combined context (original + rescue chunks) and accepted only if
+grounding improves. The rescue prompt explicitly forbids the LLM from
+inventing \emph{neighbouring} articles and from using a passage about a
+different law or topic than the user's question.
+
+\subsection{Iterative Retrieval (Adaptive $k$-Expansion)}\label{sec:iter}
+
+Following the spirit of~\cite{alghamdi2023}'s finding that retrieval quality
+dominates downstream correctness, we treat $k$ as adaptive. After the initial
+generation and validation, if validation flags missing articles AND
+\texttt{USE\_ITERATIVE\_RETRIEVAL} is enabled (default), the system re-runs
+\emph{only} the retrieval stage---not the LLM---at successively larger $k$
+values from \texttt{ITERATIVE\_K\_SEQUENCE} (default $[7,14,21]$). Any new
+chunks not already in the context are appended; if any widened window
+surfaces the missing articles, validation passes \emph{for free}. Only if
+this cheap expansion still fails does the corrective retry
+(Section~\ref{sec:retry}) and rescue (Section~\ref{sec:rescue}) take over,
+but now with a wider context in hand. Easy queries pay no extra cost; hard
+queries pay 2--3 cheap retrievals before an LLM call is incurred.
+
+\subsection{Answer Post-Processing}\label{sec:postproc}
+
+A deterministic, regex-driven post-processing layer
+(\texttt{postprocess\_answer}) runs after the final answer is selected.
+Two transformations:
+\begin{enumerate}
+  \item \emph{Casual-opener stripping}---a curated list of conversational
+        fillers (\ar{حسناً}, \ar{بالتأكيد}, \ar{تمام}, \ar{طبعاً},
+        \ar{سوف أجيب}, \ar{لقد قرأت السؤال}, \ldots) is stripped from the
+        leading position; multi-word openers ordered longest-first to
+        prevent stranded fragments.
+  \item \emph{Refusal-phrase normalisation}---when the LLM splices the
+        template-refusal phrase \ar{المادة المطلوبة غير متوفرة في السياق
+        المقدم} mid-clause, the regex \texttt{\_EMBEDDED\_REFUSAL\_RE}
+        matches the awkward construction---accounting for Arabic
+        prefix-contraction (\ar{ل + ال} $\rightarrow$ \ar{لل})---and rewrites
+        it as a standalone sentence.
+\end{enumerate}
+
+% =============================================================================
+\section{Document Upload Pipeline}\label{sec:upload}
+
+The system supports three retention semantics for user-supplied documents,
+all flowing through a single shared parser (\texttt{services/upload\_helper.py})
+to guarantee consistent behaviour:
+\begin{itemize}
+  \item \texttt{POST /api/v1/qa/upload}---per-question attachment (not
+        persisted);
+  \item \texttt{POST /api/v1/chat/attach}---session-attached document
+        (persists with the chat session on disk);
+  \item \texttt{POST /api/v1/ingest}---permanent corpus ingestion (merges
+        into FAISS and BM25, hot-reloaded by the running service).
+\end{itemize}
+
+Supported formats: \texttt{.txt} (with Arabic-encoding fallback), \texttt{.pdf}
+(\texttt{pdftotext} preferred, PyPDF2 fallback), and \texttt{.docx}
+(\texttt{docx2txt}). The legacy \texttt{.doc} binary format is explicitly
+rejected with a helpful Arabic message recommending conversion to
+\texttt{.docx} or \texttt{.pdf}.
+
+% =============================================================================
+\section{Evaluation}\label{sec:eval}
+
+\subsection{Benchmark}\label{sec:baseline}
+
+We constructed a 28-question Arabic legal benchmark spanning three difficulty
+tiers (basics, application, advanced) and covering both substantive (Penal
+Code) and procedural (Code of Criminal Procedure) law. The benchmark
+deliberately includes 5 well-formed substantive questions, 1 procedural
+question that historically triggered wrong-law confusion, 5 input-gate test
+cases (markdown headings, bullets, colon-terminated incomplete sentences),
+and 17 application and reasoning questions drawn from undergraduate
+criminal-law curricula. Each question is evaluated against two metrics:
+(i)~\emph{evidence-validation status}---whether every article number cited in
+the answer can be traced to the retrieved (or rescued) context---and
+(ii)~the \emph{confidence score} of Equation~\ref{eq:conf}.
+
+\subsection{Results across system versions}
+
+Table~\ref{tab:results} summarises headline metrics across five system
+versions corresponding to the cumulative introduction of each
+grounding-defence layer.
+
+\begin{table}[!htb]
+\centering
+\small
+\caption{Headline metrics across five system versions on the 28-question
+benchmark. v5 (multi-query expansion) is omitted: see
+Section~\ref{sec:limits}. Mean API latency excludes input-gated rows (which
+do not invoke an LLM and complete in $\sim$9\,ms). The v8 LLM upgrade
+(llama-3.1-8b $\rightarrow$ llama-3.3-70b) is also responsible for the
+substantial mean-latency reduction, since the larger model triggers fewer
+corrective retries.}
+\label{tab:results}
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{lrrrrr}
+\toprule
+Metric                       &     v3 &     v4 &     v6 &     v7 &              v8 \\
+\midrule
+Passed validation            &  20/28 &  26/28 &  27/28 &  27/28 & \textbf{28/28} \\
+\quad (\%)                   & 71.4\% & 92.9\% & 96.4\% & 96.4\% & \textbf{100.0\%} \\
+Hallucinations               &   8/28 &   2/28 &   1/28 &   1/28 & \textbf{0/28}  \\
+\quad (\%)                   & 28.6\% &  7.1\% &  3.6\% &  3.6\% & \textbf{0.0\%} \\
+Avg confidence               & 41.2\% & 38.0\% & 39.8\% & 40.0\% & 41.9\% \\
+Input-gated (no LLM)         &      0 &      8 &      8 &      8 &      8 \\
+\midrule
+Mean API latency (ms)        & 26{,}028 & 34{,}162 & 34{,}096 & 33{,}459 & \textbf{18{,}390} \\
+Max API latency (ms)         & 48{,}691 & 64{,}439 & 116{,}940 & 107{,}427 & 28{,}460 \\
+Mean retrieval latency (ms)  & 13{,}479 & 17{,}193 & 16{,}508 & 13{,}587 & 16{,}024 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Progression by layer:
+\begin{itemize}
+  \item v3 $\rightarrow$ v4: input gate + corrective retry + tightened
+        prompts $\rightarrow -21.5$ pp (8 $\rightarrow$ 2).
+  \item v4 $\rightarrow$ v6: article-lookup rescue $\rightarrow -3.5$ pp
+        (2 $\rightarrow$ 1).
+  \item v6 $\rightarrow$ v7: rescue prompt tightening + quality-tiered chunk
+        ranking $\rightarrow$ 0 net change in pass rate, but the failing
+        question shifted (LLM non-determinism).
+  \item v7 $\rightarrow$ v8: LLM upgrade from
+        \texttt{llama-3.1-8b-instant} to \texttt{llama-3.3-70b-versatile}
+        $\rightarrow -3.6$ pp (1 $\rightarrow$ 0).
+\end{itemize}
+
+\subsection{Per-category breakdown}
+
+Table~\ref{tab:bycat} disaggregates the headline pass-rate by question
+category, exposing which defence layers recover which failure modes. The
+benchmark's 28 questions break down into 11~substantive (definitions of
+crimes, penalties, elements), 1~procedural (pre-trial detention),
+8~fragment / input-gate tests (markdown headers, bullets, colon-terminated
+sentences), and 8~reasoning / application questions (case analyses,
+comparisons, hypotheticals).
+
+\begin{table}[!htb]
+\centering
+\small
+\caption{Pass rate by question category across versions. Substantive
+questions absorb the largest share of the v3 baseline failures (3/11); these
+are recovered progressively by the corrective retry (v4), the article-lookup
+rescue (v6), and the LLM upgrade (v8). Fragment failures in v3 reflect
+hallucinated answers to inputs the system should have refused; they are
+fully resolved by the input gate introduced in v4.}
+\label{tab:bycat}
+\setlength{\tabcolsep}{5pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{lcccccr}
+\toprule
+Category       & v3    & v4    & v6     & v7     & v8     & total \\
+\midrule
+Substantive    & 8/11  & 9/11  & 10/11  & 10/11  & \textbf{11/11} & 11 \\
+Procedural     & 0/1   & 1/1   & 1/1    & 1/1    & \textbf{1/1}   & 1  \\
+Reasoning      & 7/8   & 8/8   & 8/8    & 8/8    & \textbf{8/8}   & 8  \\
+Fragment       & 5/8   & 8/8   & 8/8    & 8/8    & \textbf{8/8}   & 8  \\
+\midrule
+\textbf{Total} & 20/28 & 26/28 & 27/28  & 27/28  & \textbf{28/28} & 28 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Per-question transition for historically-failing rows}
+
+Table~\ref{tab:transition} traces the nine questions that failed
+evidence-validation in at least one version. The cell format \emph{S~XX\%}
+encodes status (\emph{P}=pass / \emph{F}=fail) and confidence percentage.
+Several observations are noteworthy:
+
+\begin{itemize}
+  \item \textbf{Q2} (the most persistent substantive failure --- legitimate
+        self-defence, hallucinating \protect\ar{المادة 87}) failed in v3
+        through v6 and was only resolved by the v7 article-lookup-rescue
+        prompt tightening + better chunk ranking. v8 retains the fix.
+  \item \textbf{Q18} (\protect\ar{الجريمة تامة أم شروع}) is the system's
+        non-deterministic worst-case. The LLM cites a different fabricated
+        article number on each run (Articles 30, 31, 32 observed). The
+        article-lookup rescue catches whichever number it cites when that
+        number exists in the index --- which is why v6 and v8 pass but v7
+        (with a regression of the rescue prompt) failed.
+  \item \textbf{Fragment rows} (Q6, Q13, Q23) all pass from v4 onward with
+        0\,\% confidence by design --- the input gate short-circuits them
+        before any LLM call.
+\end{itemize}
+
+\begin{table}[!htb]
+\centering
+\small
+\caption{Per-version status and confidence for the 9 questions that failed
+in at least one version. P = passed evidence validation; F = failed
+(hallucinated citation). The other 19 questions pass in every version and
+are omitted for brevity. Confidence is rounded to the nearest percent.}
+\label{tab:transition}
+\setlength{\tabcolsep}{3.5pt}
+\renewcommand{\arraystretch}{1.18}
+\begin{tabular}{rllllllp{4.8cm}}
+\toprule
+\# & cat & v3 & v4 & v6 & v7 & v8 & Question (truncated) \\
+\midrule
+ 2 & sub.  & F\,12\% & F\,2\%  & F\,2\%  & P\,57\% & P\,62\% & \ar{الدفاع الشرعي في قانون العقوبات} \\
+ 3 & proc. & F\,9\%  & P\,59\% & P\,59\% & P\,59\% & P\,55\% & \ar{شروط التوقيف الاحتياطي} \\
+ 4 & sub.  & F\,20\% & P\,70\% & P\,70\% & P\,70\% & P\,70\% & \ar{أركان جريمة القتل العمد} \\
+ 6 & frag. & F\,0\%  & P\,0\%  & P\,0\%  & P\,0\%  & P\,0\%  & \ar{\#\# المستوى الأول --- أساسيات} \\
+13 & frag. & F\,0\%  & P\,0\%  & P\,0\%  & P\,0\%  & P\,0\%  & \ar{* المخالفة} \\
+18 & sub.  & P\,53\% & F\,0\%  & P\,48\% & F\,0\%  & P\,53\% & \ar{هل تعتبر الجريمة تامة أم شروع؟} \\
+23 & frag. & F\,0\%  & P\,0\%  & P\,0\%  & P\,0\%  & P\,0\%  & \ar{\#\# المستوى الثالث} \\
+25 & sub.  & F\,14\% & P\,64\% & P\,64\% & P\,64\% & P\,64\% & \ar{الفاعل الأصلي والشريك في الجريمة} \\
+28 & reas. & F\,0\%  & P\,47\% & P\,47\% & P\,47\% & P\,47\% & \ar{أسباب الإباحة وموانع المسؤولية} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Comparison with related work}
+
+Direct numerical comparison with prior Arabic-legal-RAG work is complicated
+by the fact that no two papers in the area share a common benchmark---each
+publishes against its own custom dataset. Table~\ref{tab:compare} reports
+each system's headline metric on its own evaluation, alongside the
+qualitative comparisons that \emph{are} comparable.
+
+\begin{table}[!htb]
+\centering
+\caption{Comparison with related Arabic-legal-RAG work. Metric column reports
+each paper's primary reported figure on its own benchmark.}
+\label{tab:compare}
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.20}
+\begin{tabular}{lllr}
+\toprule
+System & Domain & Primary metric & Score \\
+\midrule
+El-Beltagy \& Abdallah~\cite{elbeltagy2024}
+       & Arabic RAG (general)
+       & embedding-model ablations
+       & --- \\
+Hrimech et~al.~\cite{hrimech2025}
+       & Moroccan family code
+       & MRR, Recall@$k$, F1
+       & --- \\
+Aboasal et~al.~\cite{aboasal2025}
+       & Egyptian legal IR
+       & MAP / nDCG@10
+       & 0.83 / 0.86 \\
+Abu Shairah et~al.~\cite{alarb2025}
+       & Saudi commercial law
+       & verdict prediction
+       & --- \\
+\midrule
+\textbf{Nour (this work)}
+       & \textbf{Egyptian criminal law}
+       & \textbf{hallucination rate}
+       & \textbf{0.0\%} \\
+\textbf{Nour (this work)}
+       & \textbf{Egyptian criminal law}
+       & \textbf{validation pass rate}
+       & \textbf{100\%} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Our chosen primary metric (hallucination rate) differs from the
+information-retrieval metrics used by~\cite{aboasal2025} and~\cite{hrimech2025}
+deliberately. As Hrimech et~al.~\cite{hrimech2025} explicitly observe,
+``content validity of legal clauses reproduced from retrieval systems'' is
+the practical bottleneck in deploying these systems to legal practice---and
+that is what our hallucination-rate metric measures directly. Three
+distinguishing properties of our setup are worth highlighting:
+\begin{itemize}
+  \item \emph{Wider scope of source material}: 1{,}057 documents and 47{,}028
+        chunks vs. 500 articles / 1{,}000 Q\&A in~\cite{aboasal2025} and
+        2{,}500 Q\&A pairs in~\cite{hrimech2025}.
+  \item \emph{Coverage of both substantive and procedural law} (Penal Code +
+        Code of Criminal Procedure), with explicit prompt-level disambiguation.
+        Prior Arabic-legal-RAG work tends to focus on one or the other.
+  \item \emph{Layered post-generation defence pipeline} not present in any of
+        the cited prior work, which focus exclusively on the retrieval stage.
+\end{itemize}
+
+\subsection{Qualitative observations}
+
+Two questions are particularly informative. \textbf{Q3}
+(\ar{التوقيف الاحتياطي}): in v3, this triggered the wrong-law failure mode
+(cited Article~300 of the Penal Code); after prompt-level disambiguation in
+v4, the LLM correctly identifies the question as procedural and produces a
+refusal-style answer when retrieval does not surface the relevant chunks.
+Validation passes (no fabricated citation) at 59\,\% confidence.
+\textbf{Q18} (\ar{هل تعتبر الجريمة تامة أم شروع؟}) was the most persistent
+failure: it failed in v3, regressed under v4's pure-prompt approach (citing
+Articles~30 and~31), and recovered to passing only with the article-lookup
+rescue in v6 (\ar{تم استرجاع مواد إضافية من قاعدة البيانات للتحقق من
+الاستشهادات (مواد: 30, 31)}), at 48\,\% confidence. These cases underline
+that no single mechanism is sufficient: each layer recovers a distinct
+class of failure.
+
+% =============================================================================
+\section{Limitations and Future Work}\label{sec:limits}
+
+\textbf{Negative result on multi-query expansion.} In an intermediate version
+(v5) we evaluated heuristic synonym expansion (mapping
+\ar{التوقيف الاحتياطي} to \ar{الحبس الاحتياطي} etc.) as a query-side
+intervention. The result was a \emph{regression}: pass rate dropped from
+92.9\,\% (v4) to 78.6\,\% (v5), with four previously-passing questions
+re-introducing hallucinations. Inspection revealed that synonym expansion
+diluted retrieval quality by pulling in less-relevant chunks. This is
+consistent with the~\cite{elbeltagy2024} observation that embedding-model
+semantics for Arabic do not translate cleanly across closely-related
+lexically-distinct legal terms. We retain the implementation
+(\texttt{USE\_MULTI\_QUERY=False} by default) and report this as a
+cautionary data point. A semantically-aware query expansion using the LLM
+itself, rather than a static synonym table, may recover this lost potential.
+
+\textbf{LLM cost on free tiers.} The full pipeline can incur up to three LLM
+calls per hard question. Combined with the Groq free-tier 6{,}000-TPM budget,
+this places a practical ceiling on evaluation throughput. Paid providers
+lift this constraint at marginal cost.
+
+\textbf{Article-lookup precision.} The rescue mechanism operates on chunk
+\emph{references} to article numbers, not on chunks that \emph{define} those
+articles. A dedicated article-definition index, populated by paragraph-level
+segmentation of the Penal Code text, would address this.
+
+\textbf{Embedding model.} The current index uses
+\texttt{paraphrase-multilingual-MiniLM-L12-v2} (384-dim). Aboasal
+et~al.~\cite{aboasal2025} report substantially higher MAP scores with BGE-M3
+(1{,}024-dim). An index rebuild with BGE-M3 plus article-aware chunking is
+the single largest remaining improvement, gated on $\sim$3--7\,h of CPU
+rebuild time.
+
+\textbf{Evaluation scope.} Our 28-question benchmark is small relative to the
+13{,}000-case ALARB~\cite{alarb2025} and the 2{,}500-pair set
+of~\cite{hrimech2025}. Scaling to a comparably-sized benchmark for
+camera-ready evaluation is the natural next step; the public corpus released
+with this work supports such scaling.
+
+% =============================================================================
+\section{Conclusion}\label{sec:conclusion}
+
+We have presented two complementary contributions: an open Arabic
+criminal-law corpus, manually constructed from 933 legacy-format source
+files into 1{,}057 cleaned documents and released publicly on HuggingFace;
+and \textbf{Nour}, a hallucination-resistant Arabic legal RAG system built on
+top of this corpus, whose six-layer grounding-defence pipeline drives the
+rate of hallucinated statutory citations from a baseline of 28.6\,\% down to
+\textbf{0.0\,\%} on a 28-question benchmark.
+
+Our key methodological contribution is the demonstration that \textbf{no
+single mechanism is sufficient} for hallucination suppression in Arabic legal
+RAG. The baseline failures distribute across distinct root causes (LLM
+memory citations, retrieval coverage gaps, fragmentary user inputs,
+wrong-law confusion, prompt-template leakage), and each requires its own
+layer of defence. We hope the released corpus and the layered defence
+pipeline inform and accelerate the deployment of Arabic legal-AI systems in
+production settings.
+
+\section*{Acknowledgements}
+
+The authors thank the open-source community behind FAISS, BM25,
+BGE-Reranker-v2-M3, Groq, Google Gemini, and OpenRouter, and the Egyptian
+legal-publication archives whose collections were the raw material for the
+released corpus.
+
+% =============================================================================
+\begin{thebibliography}{99}
+
+\bibitem{elbeltagy2024}
+S.~R. El-Beltagy and M.~A. Abdallah,
+``Exploring Retrieval Augmented Generation in Arabic,''
+\emph{Procedia Computer Science}, vol.~244, pp.~296--307, 2024.
+6th International Conference on AI in Computational Linguistics (ACLing~2024).
+\href{https://doi.org/10.1016/j.procs.2024.10.203}{doi:10.1016/j.procs.2024.10.203}.
+
+\bibitem{hrimech2025}
+J.~Hrimech, M.~Mghari, and Y.~Zaz,
+``Retrieval-augmented generation for Arabic legal information: the family code case study,''
+\emph{TELKOMNIKA Telecommunication Computing Electronics and Control},
+vol.~23, no.~6, pp.~1495--1505, Dec.~2025.
+\href{https://doi.org/10.12928/TELKOMNIKA.v23i6.27400}{doi:10.12928/TELKOMNIKA.v23i6.27400}.
+
+\bibitem{alarb2025}
+H.~Abu Shairah, S.~AlHarbi, A.~AlHussein, S.~Alsabea, O.~Shaqaqi,
+H.~AlShamlan, O.~Knio, and G.~Turkiyyah,
+``ALARB: An Arabic Legal Argument Reasoning Benchmark,''
+in \emph{Proceedings of the Third Arabic Natural Language Processing Conference},
+pp.~389--406, Association for Computational Linguistics, Nov.~8--9, 2025.
+
+\bibitem{alghamdi2023}
+M.~Alghamdi, M.~Abushawarib, M.~Ellouh, M.~Ghaleb, and M.~Felemban,
+``Enhancing Arabic Information Retrieval for Question Answering,''
+in \emph{ICFNDS~'23: Proceedings of the 7th International Conference on
+Future Networks and Distributed Systems}, Dubai, UAE, Dec.~21--22, 2023.
+\href{https://doi.org/10.1145/3644713.3644763}{doi:10.1145/3644713.3644763}.
+
+\bibitem{aboasal2025}
+R.~Aboasal, S.~Montasser, F.~Hossam Eldin, A.~Abdelwahab, and H.~Abdelazim,
+``Arabic Legal Information Retrieval: The Impact of Morphological
+Segmentation and Semantic Embeddings,''
+\emph{Procedia Computer Science}, vol.~275, pp.~275--282, 2026.
+7th International Conference on AI in Computational Linguistics (ACLing~2025).
+
+\bibitem{miniraq}
+``Mini-RAG Project: Learnings \& Technologies,''
+internal RAG-implementation documentation, on file with the authors.
+
+\bibitem{nourdataset}
+M.~Nageh,
+``Egyptian\_Criminal\_Legal\_Assistant\_RAG\_V2 [Dataset],''
+HuggingFace Datasets, 2026.
+Available: \url{https://huggingface.co/datasets/Mirna2Nageh/Egyptian_Criminal_Legal_Assistant_RAG_V2}.
+
+\end{thebibliography}
+
+\end{document}
