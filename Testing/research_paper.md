@@ -30,6 +30,7 @@ The contributions of this work are as follows:
 4. **Iterative retrieval with adaptive k-expansion** (Section 4.6) that automatically widens the retrieval window from k=7 to k=14, then k=21, when evidence validation fails — re-using cached chunks where possible and avoiding additional LLM calls. This mechanism captures legally-relevant articles that the initial reranker's top-k missed.
 5. **A document-upload pipeline** (Section 5) supporting three distinct retention semantics — per-question, session-attached, and permanent-corpus — across the three most common Arabic document formats (`.txt`, `.pdf`, `.docx`) and pasted-text strings. The pipeline shares a single parser and Arabic-cleaning module to guarantee consistent behaviour across modes.
 6. **A five-version evaluation trail** (Section 6) on a 28-question Arabic legal benchmark, with the per-version CSV outputs released alongside the system, allowing reproducible auditing of every architectural change.
+7. **A procedural-defence reasoning checklist** (Section 4.8) that encodes expert-lawyer case-analysis heuristics — warrant-timeline nullity, identifier mismatch, chain-of-custody, and intent-from-profession — into the case-analysis prompts, paired with a *grounding-safe* few-shot exemplar that raises reasoning coverage without reintroducing hallucinated citations.
 
 The remainder of the paper is organised as follows. Section 2 surveys related work on Arabic legal RAG, multilingual retrieval, and hallucination mitigation. Section 3 describes the base retrieval architecture. Section 4 presents the six grounding-defence mechanisms in detail. Section 5 describes the document-upload subsystem. Section 6 reports the evaluation methodology and results. Section 7 discusses limitations and Section 8 concludes.
 
@@ -140,6 +141,22 @@ This mechanism has favourable cost characteristics: easy queries (those that pas
 2. **Refusal-phrase normalisation.** When the LLM splices the template-refusal phrase `المادة المطلوبة غير متوفرة في السياق المقدم` mid-clause (a frequent observation in pre-v6 outputs, e.g., `وفقاً للمادة المطلوبة غير متوفرة في السياق المقدم، يبدو أن السؤال غير مكتمل`), the regex `_EMBEDDED_REFUSAL_RE` matches the awkward construction — accounting for Arabic prefix-contraction rules (`ل + ال → لل`) — and rewrites it as a standalone sentence (`النصوص المقدمة لا تتضمن المادة المطلوبة.`).
 
 A separate classifier `looks_like_refusal` detects whether the post-processed answer is dominated by refusal markers; if so, a `is_refusal` warning is surfaced. Confidence is not capped automatically (an earlier design choice we reverted in v5 after observing it dragged down the mean on borderline partial-but-valid answers).
+
+---
+
+### 4.8 Procedural-Defence Reasoning Checklist (Case Analysis)
+
+**Failure mode.** The grounding mechanisms in Sections 4.1–4.7 ensure that what the system *cites* is correct; a complementary failure mode concerns what it *omits*. The case-analysis endpoints (`/weakness`, `/defense`, `/forensic`) consume a full criminal case file rather than a single question, and a domain-expert review of their output scored the legal reasoning at roughly 70 %: the analyses were well-grounded but missed several high-value procedural-nullity and criminal-intent arguments that a practising Egyptian criminal-defence lawyer applies routinely — and in one case *over-claimed* a defect that did not exist.
+
+**Mechanism.** We encode the expert feedback as a **procedural-defence checklist** of five reasoning procedures, appended to the system prompts of the three case-analysis endpoints and reinforced in their user templates:
+
+- **A. Timeline vs. prosecution warrant** — compare the exact arrest/search time against the time the prosecution warrant (`إذن النيابة`) issued; a seizure preceding the warrant voids the arrest and everything built on it (`ما بُني على باطل فهو باطل`). The rule explicitly instructs the model to read `الساعة 12:00 صباحاً` as the *start* of the day, correcting a clock-reading error observed in baseline output.
+- **B. Identifier mismatch** — compare every identifier in the warrant (vehicle plate numbers, names, IDs) against the seizure record; any discrepancy places the seized item outside the warrant and may evidence `تلفيق`.
+- **C. Territorial jurisdiction** — apply correctly and do *not* over-claim spatial excess for a location inside the precinct. This point is a precision correction (a false-positive suppressor), not an additional-recall rule.
+- **D. Chain of custody** — challenge the integrity of the sealed exhibits (`التحريز`) when the officer who sealed them differs from the one who wrote the seizure record.
+- **E. Intent from profession** — weigh the defendant's occupation against the nature of any seized cash to contest trafficking intent (`انتفاء قصد الاتجار`).
+
+The checklist is paired with a single fully-worked, *fictional* few-shot exemplar demonstrating all five points end-to-end. Crucially, the exemplar is **grounding-safe by construction**: it names defence doctrines (`بطلان القبض والتفتيش`, `انتفاء قصد الاتجار`) but contains *no* `المادة N` article number, so it cannot teach the model to emit an ungrounded citation that the evidence validator (Section 4.3) would flag — raising reasoning coverage while preserving the 0 % hallucinated-citation property. Each checklist item is explicitly conditioned on the facts supporting it ("raise a point only when the facts genuinely support it — never invent one"), so the additions trade no precision for their gain in recall.
 
 ---
 

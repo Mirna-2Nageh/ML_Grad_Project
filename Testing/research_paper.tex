@@ -172,6 +172,12 @@ metadata lookup, and answer rewriting is required.
   \item A document-upload subsystem (Section~\ref{sec:upload}) supporting
         three retention semantics across \texttt{.txt}, \texttt{.pdf}, and
         \texttt{.docx} formats.
+  \item A \textbf{procedural-defence reasoning checklist}
+        (Section~\ref{sec:checklist}) that encodes expert-lawyer case-analysis
+        heuristics (warrant-timeline nullity, identifier mismatch,
+        chain-of-custody, intent-from-profession) into the case-analysis
+        prompts, paired with a \emph{grounding-safe} few-shot exemplar that
+        raises reasoning coverage without reintroducing hallucinated citations.
 \end{enumerate}
 
 % =============================================================================
@@ -687,6 +693,57 @@ Two transformations:
         prefix-contraction (\ar{ل + ال} $\rightarrow$ \ar{لل})---and rewrites
         it as a standalone sentence.
 \end{enumerate}
+
+\subsection{Procedural-Defence Reasoning Checklist for Case Analysis}\label{sec:checklist}
+
+The grounding mechanisms above ensure that what the system \emph{cites} is
+correct; a complementary failure mode concerns what it \emph{omits}. The
+case-analysis endpoints (\texttt{/weakness}, \texttt{/defense},
+\texttt{/forensic}) take a full criminal case file rather than a single
+question, and a domain expert's review of their output scored the legal
+reasoning at roughly 70\,\%: the analyses were well-grounded but missed
+several high-value procedural-nullity and criminal-intent arguments that a
+practising Egyptian criminal-defence lawyer applies routinely, and in one
+instance over-claimed a defect that did not exist. We encode the expert's
+feedback as a \textbf{procedural-defence checklist} of five reasoning
+procedures appended to the system prompts of the three case-analysis
+endpoints and reinforced in their user templates:
+
+\begin{enumerate}
+  \item[\textbf{A.}] \emph{Timeline vs.\ prosecution warrant}---compare the
+        exact time of the arrest/search against the time the prosecution
+        warrant (\ar{إذن النيابة}) issued; a seizure preceding the warrant
+        voids the arrest and everything built on it
+        (\ar{ما بُني على باطل فهو باطل}). The rule explicitly instructs the
+        model to read \ar{الساعة 12:00 صباحاً} as the \emph{start} of the day,
+        correcting a clock-reading error observed in baseline output.
+  \item[\textbf{B.}] \emph{Identifier mismatch}---compare every identifier in
+        the warrant (vehicle plate numbers, names, IDs) against the seizure
+        record; any discrepancy places the seized item outside the warrant
+        and may evidence \ar{تلفيق}.
+  \item[\textbf{C.}] \emph{Territorial jurisdiction}---apply correctly and do
+        \emph{not} over-claim spatial excess for a location inside the
+        precinct; this point is a precision correction (a false-positive
+        suppressor) rather than an additional-recall rule.
+  \item[\textbf{D.}] \emph{Chain of custody}---challenge the integrity of the
+        sealed exhibits (\ar{التحريز}) when the officer who sealed them
+        differs from the one who wrote the seizure record.
+  \item[\textbf{E.}] \emph{Intent from profession}---weigh the defendant's
+        occupation against the nature of any seized cash to contest
+        trafficking intent (\ar{انتفاء قصد الاتجار}).
+\end{enumerate}
+
+The checklist is paired with a single fully-worked, \emph{fictional} few-shot
+exemplar demonstrating all five points end-to-end. Crucially, the exemplar is
+\textbf{grounding-safe by construction}: it names defence doctrines
+(\ar{بطلان القبض والتفتيش}, \ar{انتفاء قصد الاتجار}) but contains
+\emph{no} \ar{المادة}~$N$ article number, so it cannot teach the model to
+emit an ungrounded citation that the evidence validator
+(Section~\ref{sec:validate}) would flag---raising reasoning coverage while
+preserving the 0\,\% hallucinated-citation property. Each checklist item is
+explicitly conditioned on the facts supporting it (``raise a point only when
+the facts genuinely support it---never invent one''), so the additions
+trade no precision for their gain in recall.
 
 % =============================================================================
 \section{Document Upload Pipeline}\label{sec:upload}

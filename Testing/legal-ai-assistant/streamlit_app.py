@@ -85,6 +85,30 @@ def _render_warnings(warnings):
         st.markdown(f'<div class="warning-box">⚠️ {w}</div>', unsafe_allow_html=True)
 
 
+def _friendly_error(r):
+    """Turn a non-200 response into a readable Arabic message.
+
+    Handles FastAPI's two shapes: a plain `{"detail": "..."}` string (e.g. the 503
+    'try again' message) and Pydantic's validation list `[{loc, msg, ctx}, ...]`
+    (e.g. min_length too short) — the latter would otherwise render as empty output."""
+    try:
+        detail = r.json().get("detail", "")
+    except Exception:
+        return f"خطأ {r.status_code}: {(r.text or '')[:200]}"
+    if isinstance(detail, list):  # Pydantic validation errors
+        parts = []
+        for e in detail:
+            ctx = e.get("ctx") or {}
+            if ctx.get("min_length"):
+                parts.append(f"النص قصير جدًا — الحد الأدنى {ctx['min_length']} حرف.")
+            elif ctx.get("max_length"):
+                parts.append(f"النص طويل جدًا — الحد الأقصى {ctx['max_length']} حرف.")
+            else:
+                parts.append(e.get("msg", "قيمة غير صالحة"))
+        return " ".join(parts) or "طلب غير صالح."
+    return str(detail) or f"خطأ {r.status_code}"
+
+
 def _render_metrics(data, with_retrieval=True):
     """Render a row of metrics: latency, retrieval, sources, confidence."""
     cols = st.columns(4 if with_retrieval else 3)
@@ -256,7 +280,7 @@ with tab1:
     )
     col1, col2 = st.columns([3, 1])
     with col2:
-        k_val = st.slider("عدد المراجع", 3, 15, 7, key="qa_k")
+        k_val = st.slider("عدد المراجع", 3, 30, 10, key="qa_k")
 
     # Optional per-question attachment: upload a file OR paste text. When
     # either is given, the request goes to /qa/upload instead of /qa and the
@@ -306,11 +330,7 @@ with tab1:
                         }, timeout=180)
 
                     if r.status_code >= 400:
-                        try:
-                            err = r.json().get("detail", "")
-                        except Exception:
-                            err = r.text
-                        st.error(f"خطأ {r.status_code}: {err}")
+                        st.error(_friendly_error(r))
                     else:
                         data = r.json()
                         st.markdown(f'<div class="answer-box">{data.get("answer", "")}</div>', unsafe_allow_html=True)
@@ -356,18 +376,22 @@ with tab2:
         placeholder="المادة الأولى: ... — أو ارفع ملفًا أعلاه ليُعبَّأ تلقائيًا",
         key="sum_input"
     )
+    st.caption("ℹ️ الحد الأدنى للنص: 50 حرفًا.")
     if st.button("📝 لخّص", key="sum_btn", type="primary", use_container_width=True):
-        if text and len(text) >= 50:
+        if not text or len(text.strip()) < 50:
+            st.warning(f"النص قصير جدًا — اكتب 50 حرفًا على الأقل (الحالي: {len((text or '').strip())}).")
+        else:
             with st.spinner("جاري التلخيص..."):
                 try:
                     r = requests.post(f"{API_BASE}/summarize", json={"text": text}, timeout=180)
-                    data = r.json()
-                    st.markdown(f'<div class="answer-box">{data.get("summary", "")}</div>', unsafe_allow_html=True)
-                    st.metric("⏱️ زمن الاستجابة", f"{data.get('latency_ms', 0):.0f} ms")
+                    if r.status_code >= 400:
+                        st.error(_friendly_error(r))
+                    else:
+                        data = r.json()
+                        st.markdown(f'<div class="answer-box">{data.get("summary", "")}</div>', unsafe_allow_html=True)
+                        st.metric("⏱️ زمن الاستجابة", f"{data.get('latency_ms', 0):.0f} ms")
                 except Exception as e:
                     st.error(f"خطأ: {e}")
-        else:
-            st.warning("النص قصير جداً (الحد الأدنى ٥٠ حرف)")
 
 # ═══════════ TAB 3: Weakness Detection ═══════════
 with tab3:
@@ -413,8 +437,11 @@ with tab3:
         key="weak_defendant",
     )
 
+    st.caption("ℹ️ وقائع القضية: 20 حرفًا على الأقل.")
     if st.button("🔍 حلل", key="weak_btn", type="primary", use_container_width=True):
-        if case_facts:
+        if not case_facts or len(case_facts.strip()) < 20:
+            st.warning(f"وقائع القضية قصيرة جدًا — اكتب 20 حرفًا على الأقل لتحليل ذي معنى (الحالي: {len((case_facts or '').strip())}).")
+        else:
             with st.spinner("جاري تحليل نقاط الضعف..."):
                 try:
                     payload = {"case_facts": case_facts}
@@ -423,12 +450,15 @@ with tab3:
                     if weak_defendant and weak_defendant.strip():
                         payload["defendant_statement"] = weak_defendant
                     r = requests.post(f"{API_BASE}/weakness", json=payload, timeout=180)
-                    data = r.json()
-                    st.markdown(f'<div class="answer-box">{data.get("analysis", "")}</div>', unsafe_allow_html=True)
-                    _render_warnings(data.get("warnings"))
-                    _render_metrics(data, with_retrieval=False)
-                    _render_sources(data)
-                    _render_confidence_breakdown(data)
+                    if r.status_code >= 400:
+                        st.error(_friendly_error(r))
+                    else:
+                        data = r.json()
+                        st.markdown(f'<div class="answer-box">{data.get("analysis", "")}</div>', unsafe_allow_html=True)
+                        _render_warnings(data.get("warnings"))
+                        _render_metrics(data, with_retrieval=False)
+                        _render_sources(data)
+                        _render_confidence_breakdown(data)
                 except Exception as e:
                     st.error(f"خطأ: {e}")
 
@@ -477,8 +507,11 @@ with tab4:
         key="def_defendant",
     )
 
+    st.caption("ℹ️ وقائع القضية: 20 حرفًا على الأقل.")
     if st.button("📋 أنشئ المذكرة", key="def_btn", type="primary", use_container_width=True):
-        if def_facts:
+        if not def_facts or len(def_facts.strip()) < 20:
+            st.warning(f"وقائع القضية قصيرة جدًا — اكتب 20 حرفًا على الأقل لإنشاء مذكرة (الحالي: {len((def_facts or '').strip())}).")
+        else:
             with st.spinner("جاري إنشاء مذكرة الدفاع..."):
                 try:
                     payload = {"case_facts": def_facts}
@@ -489,12 +522,15 @@ with tab4:
                     if def_defendant and def_defendant.strip():
                         payload["defendant_statement"] = def_defendant
                     r = requests.post(f"{API_BASE}/defense", json=payload, timeout=180)
-                    data = r.json()
-                    st.markdown(f'<div class="answer-box">{data.get("memorandum", "")}</div>', unsafe_allow_html=True)
-                    _render_warnings(data.get("warnings"))
-                    _render_metrics(data, with_retrieval=False)
-                    _render_sources(data)
-                    _render_confidence_breakdown(data)
+                    if r.status_code >= 400:
+                        st.error(_friendly_error(r))
+                    else:
+                        data = r.json()
+                        st.markdown(f'<div class="answer-box">{data.get("memorandum", "")}</div>', unsafe_allow_html=True)
+                        _render_warnings(data.get("warnings"))
+                        _render_metrics(data, with_retrieval=False)
+                        _render_sources(data)
+                        _render_confidence_breakdown(data)
                 except Exception as e:
                     st.error(f"خطأ: {e}")
 

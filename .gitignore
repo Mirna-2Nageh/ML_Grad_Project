@@ -225,5 +225,44 @@ __pycache__/
 .DS_Store
 Thumbs.db
 
+# ─────────────────────────────────────────────────────────────────────
+# Project large artifacts — NEVER commit. Added 2026-05-29 after a stray
+# `git add .` staged the whole dataset. All of these are big and/or local-only
+# (regenerated, mounted at deploy time, or downloaded), so they stay out of git.
+# ─────────────────────────────────────────────────────────────────────
+
+# In-tree virtualenv. NOTE: the existing `LAW/` rule is case-sensitive and does
+# NOT match the real venv dir `LaW/` — this line closes that ~5.8GB gap.
+LaW/
+
+# Raw + cleaned legal datasets (hundreds of MB of .doc / .pdf / .txt)
+OriginalData/
+final_total_dataset/
+DataSet/
+Data_Set/
+data.legacy/
+Rag/
+Grad/
+
+# Prebuilt retrieval index + runtime state (mounted at deploy time, never versioned)
+*.pkl
+*.faiss
+faiss_index/
+**/data/sessions/
+**/data/inbox/
+answer_cache.json
+.ingested_files.json
+
+# Large binaries / media / scratch
+*.zip
+*.crdownload
+*.mp4
+*.jpeg
+out*.txt
+
+# Jupyter notebooks — legacy experiment exports (large). Force-add if you truly
+# need one:  git add -f path/to/notebook.ipynb
+*.ipynb
+
 
 

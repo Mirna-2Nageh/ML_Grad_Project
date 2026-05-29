@@ -58,6 +58,17 @@ CEREBRAS_API_KEYS = _key_list("CEREBRAS_API_KEY", "CEREBRAS_API_KEYS")
 CEREBRAS_API_KEY = CEREBRAS_API_KEYS[0] if CEREBRAS_API_KEYS else ""  # back-compat
 CEREBRAS_BASE_URL = os.getenv("CEREBRAS_BASE_URL", "https://api.cerebras.ai/v1")
 CEREBRAS_MODEL = os.getenv("CEREBRAS_MODEL", "llama-3.3-70b")  # verify exact id at cloud.cerebras.ai
+
+# Route oversized prompts (big case files) past providers that can't serve them in one
+# request — a rough char proxy for tokens — straight to a large-context provider (Gemini),
+# instead of wasting attempts on a guaranteed 413/over-context error. 0 = no limit.
+# Keyed by the provider label used in the chain.
+PROVIDER_MAX_PROMPT_CHARS = {
+    "Groq":       int(os.getenv("GROQ_MAX_PROMPT_CHARS", "26000")),        # ~12k tokens/min cap
+    "Cerebras":   int(os.getenv("CEREBRAS_MAX_PROMPT_CHARS", "16000")),    # ~8k-token context window
+    "xAI":        int(os.getenv("XAI_MAX_PROMPT_CHARS", "26000")),
+    "OpenRouter": int(os.getenv("OPENROUTER_MAX_PROMPT_CHARS", "80000")),
+}  # Gemini intentionally has no cap — its large context is the home for big documents.
 # Per-feature model routing: heavy reasoning (defense memo, weakness analysis) gets the
 # strong model; high-volume QA/chat can use a cheaper/faster one. Falls back to GROQ_MODEL.
 GROQ_MODEL_STRONG = os.getenv("GROQ_MODEL_STRONG", "llama-3.3-70b-versatile")
@@ -119,9 +130,9 @@ TEMPERATURES = {
 # ──────────────────────────────────────────────
 # Retrieval Parameters
 # ──────────────────────────────────────────────
-RETRIEVAL_K = 7          # Final docs returned
-RETRIEVAL_K_DENSE = 30   # FAISS candidates
-RETRIEVAL_K_SPARSE = 30  # BM25 candidates
+RETRIEVAL_K = 10         # Final docs passed to the LLM (broader context; bounded by LLM token budget)
+RETRIEVAL_K_DENSE = 60   # FAISS candidates — wider net over the corpus before rerank (CPU-only, no LLM cost)
+RETRIEVAL_K_SPARSE = 60  # BM25 candidates
 RRF_K = 60               # RRF constant
 
 # ──────────────────────────────────────────────
@@ -149,7 +160,7 @@ NORMALIZE_TA_MARBUTA = False
 # ──────────────────────────────────────────────
 USE_RERANKER = os.getenv("USE_RERANKER", "True").lower() == "true"
 RERANKER_MODEL = os.getenv("RERANKER_MODEL", "BAAI/bge-reranker-v2-m3")
-RETRIEVAL_K_RERANK = int(os.getenv("RETRIEVAL_K_RERANK", "30"))  # candidates fed to reranker (top-N from RRF)
+RETRIEVAL_K_RERANK = int(os.getenv("RETRIEVAL_K_RERANK", "60"))  # candidates fed to reranker (top-N from RRF) — wider = ranks over more of the corpus
 
 # ──────────────────────────────────────────────
 # Confidence Scoring (Phase 1 heuristic)
@@ -214,7 +225,7 @@ def _parse_int_list(env_val: str, fallback) -> list:
     except ValueError:
         return fallback
 ITERATIVE_K_SEQUENCE = _parse_int_list(
-    os.getenv("ITERATIVE_K_SEQUENCE", "7,14,21"), [7, 14, 21]
+    os.getenv("ITERATIVE_K_SEQUENCE", "10,18,28"), [10, 18, 28]
 )
 # Programmatic post-processing of the LLM answer: strip casual openings
 # ("حسناً"، "بالتأكيد"...) and rewrite the leaky template phrase
@@ -260,7 +271,7 @@ BENCHMARK_MODELS = {
 # ──────────────────────────────────────────────
 # Context budget: trimmed so a full request (input + output reservation) fits free-tier
 # token-per-minute caps (e.g. Groq 8B TPM=6000). Expert rules + top chunks still fit.
-MAX_CONTEXT_CHARS = 4500
+MAX_CONTEXT_CHARS = 6000
 MAX_INPUT_CHARS = 50000
 # Output token cap for short-answer features (QA/chat). Answers are typically 200-800 chars,
 # so a 4096 reservation needlessly doubled per-request token cost on free tiers.
