@@ -164,7 +164,7 @@ Smoke-test endpoint. Cheap, no LLM calls.
 ```jsonc
 {
   "question": "ما هي عقوبة السرقة بالإكراه في القانون المصري؟",  // 5–1000 chars
-  "k": 7,                                                  // 1–20, default 7
+  "k": 10,                                                 // 1–30, default 10
   "prompt_style": "restrictive"                            // "standard" | "restrictive", default "restrictive"
 }
 ```
@@ -197,7 +197,7 @@ Same pipeline as `/qa`, but accepts a per-question document attachment. The atta
 | `question` | string | yes | 1–2000 chars |
 | `file` | file | one of | `.txt` / `.pdf` / `.docx`. `.doc` legacy binary is NOT supported. |
 | `text` | string | one of | Pasted raw text (alternative to `file`). |
-| `k` | int | no | 1–20, default 7 |
+| `k` | int | no | 1–30, default 10 |
 | `prompt_style` | string | no | default `"restrictive"` |
 
 If both `file` and `text` are provided, `file` wins.
@@ -236,7 +236,7 @@ Multi-turn dialogue with sliding-window compaction and disk persistence. Session
                                        //   every later turn to keep the conversation.
                                        //   (Older builds defaulted to a shared "default"
                                        //   session — do NOT rely on that anymore.)
-  "k": 7                                // 1–20, default 7
+  "k": 10                               // 1–30, default 10
 }
 ```
 
@@ -370,7 +370,7 @@ Clear all attachments for a session.
 **Request:**
 ```jsonc
 {
-  "text": "المادة الأولى: ... المادة الثانية: ..."   // 50–15000 chars
+  "text": "المادة الأولى: ... المادة الثانية: ..."   // 50–50000 chars
 }
 ```
 
@@ -399,8 +399,8 @@ Analyses a criminal case from the defence perspective and identifies weaknesses 
 **Request:**
 ```jsonc
 {
-  "case_facts":          "المتهم متهم بالسرقة بالإكراه...",  // 20–10000 chars, required
-  "evidence":            "التقرير الطبي: لا توجد إصابات...", // 0–15000 chars, optional
+  "case_facts":          "المتهم متهم بالسرقة بالإكراه...",  // 20–50000 chars, required
+  "evidence":            "التقرير الطبي: لا توجد إصابات...", // 0–30000 chars, optional
   "defendant_statement": "ادعى المتهم الدفاع الشرعي..."     // 0–5000 chars, optional
 }
 ```
@@ -408,6 +408,8 @@ Analyses a criminal case from the defence perspective and identifies weaknesses 
 **Response (`200 OK`):** standard envelope with `analysis` (not `answer`), `confidence_score`, `confidence_factors`, `sources`, `warnings`, `latency_ms`, `model`.
 
 Note: separate `evidence` and `defendant_statement` fields are part of the contract — the prompts use them explicitly. UI should expose them as separate inputs (the Streamlit Tab 3 reference implementation does).
+
+**Large case files & big-context routing:** `case_facts` (up to 50k chars) and `evidence` (up to 30k chars) now accept full case files. When the assembled prompt exceeds a given provider's per-request budget (`PROVIDER_MAX_PROMPT_CHARS`), the server transparently skips that provider and falls through to a larger-context one (e.g. Gemini / OpenRouter). This needs **no client-side change** — but the response `model` field may report a fallback provider rather than the default, and latency is higher on very large inputs (budget a generous timeout). The same routing applies to `/defense` and `/forensic`.
 
 ---
 
@@ -420,9 +422,9 @@ Drafts a formal Egyptian defense memorandum (`مذكرة دفاع`) under the he
 **Request:**
 ```jsonc
 {
-  "case_facts":          "...",   // 20–10000 chars, required
+  "case_facts":          "...",   // 20–50000 chars, required
   "weaknesses":          "...",   // 0–5000 chars, optional (e.g. paste from /weakness)
-  "evidence":            "...",   // 0–15000 chars, optional
+  "evidence":            "...",   // 0–30000 chars, optional
   "defendant_statement": "..."    // 0–5000 chars, optional
 }
 ```
@@ -444,8 +446,8 @@ Documentary/logical consistency check. NOT physical forensics — analyses the c
 **Request:**
 ```jsonc
 {
-  "case_facts": "...",          // 20–10000 chars, required
-  "evidence":   "..."            // 0–15000 chars, optional
+  "case_facts": "...",          // 20–50000 chars, required
+  "evidence":   "..."            // 0–30000 chars, optional
 }
 ```
 

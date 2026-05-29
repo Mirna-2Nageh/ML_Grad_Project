@@ -120,7 +120,7 @@ Single-turn legal question. No conversation memory.
 | Field | Type | Required | Default | Constraints |
 |---|---|---|---|---|
 | `question` | string | ✅ | — | 5–1000 chars, Arabic |
-| `k` | int | ❌ | 7 | 1–20 |
+| `k` | int | ❌ | 10 | 1–30 |
 | `prompt_style` | string | ❌ | `"restrictive"` | `"standard"` (lenient) or `"restrictive"` (strict context-only) |
 
 **Response 200:**
@@ -180,7 +180,7 @@ Maintains conversation history per `session_id`. Auto-compacts at 6 turns.
 |---|---|---|---|---|
 | `message` | string | ✅ | — | Min 1 char |
 | `session_id` | string | ❌ | `"default"` | Sanitized to `[A-Za-z0-9_-]{1,128}` server-side |
-| `k` | int | ❌ | 7 | 1–20 |
+| `k` | int | ❌ | 10 | 1–30 |
 
 **Response 200:** Same shape as `/qa` plus:
 ```json
@@ -276,7 +276,7 @@ Stateless summarization of a provided text (no retrieval).
 
 | Field | Type | Required | Constraints |
 |---|---|---|---|
-| `text` | string | ✅ | 50–15000 chars |
+| `text` | string | ✅ | 50–50000 chars |
 
 **Response 200:**
 ```json
@@ -305,7 +305,7 @@ Analyses case facts for prosecution-side weaknesses. Same response shape as `/qa
 
 | Field | Type | Required | Constraints |
 |---|---|---|---|
-| `case_facts` | string | ✅ | 20–10000 chars |
+| `case_facts` | string | ✅ | 20–50000 chars |
 
 **Response 200:**
 ```json
@@ -337,7 +337,7 @@ Generates a formal court defense memorandum. Same response shape as `/weakness` 
 
 | Field | Type | Required | Default | Constraints |
 |---|---|---|---|---|
-| `case_facts` | string | ✅ | — | 20–10000 chars |
+| `case_facts` | string | ✅ | — | 20–50000 chars |
 | `weaknesses` | string | ❌ | `""` | Max 5000 chars |
 
 **Response 200:**
