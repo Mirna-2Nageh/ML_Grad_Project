@@ -98,13 +98,13 @@ Sessions **persist to disk** as JSON files in `SESSION_PERSIST_DIR` (default `da
 - `services/llm.py` — `call_llm` / `async_call_llm` (sync + threaded async, Gemini→OpenRouter fallback) and `async_stream_llm` (async generator, OpenRouter-only) for the streaming endpoint.
 - `services/session.py` — `SessionManager` with sliding-window compaction, atomic JSON-file persistence, TTL-based pruner.
 - `services/preprocessing.py` — Arabic normalization (incl. Arabic-Indic digit → Western), BM25 tokenization, doc-type/legal-category classifiers, `get_legal_topic`, `extract_article_references`.
-- `core/prompts.py` — `SYSTEM_MESSAGES` and `PROMPTS` dicts (keys: `qa_standard`, `qa_restrictive`, `weakness`, `defense`, `chat`, `summarize`, `compact_history`); "Nour" persona prompt lives here.
+- `core/prompts.py` — `SYSTEM_MESSAGES` and `PROMPTS` dicts (keys: `qa_standard`, `qa_restrictive`, `weakness`, `defense`, `chat`, `summarize`, `compact_history`); "Conan" persona prompt lives here.
 - `scripts/watch_ingest.py` — watch-folder ingest CLI. Uses functions from `scripts/ingest_pipeline.py`. Tracks processed files in `data/.ingested_files.json`.
 - `scripts/benchmark_llms.py` — compare our RAG vs `openai/gpt-4o-mini` vs `anthropic/claude-sonnet-4.5` (all via OpenRouter).
 
 ## Conventions
 
-- All user-facing output is Modern Standard Arabic; the persona is "Nour" (نور). The prompts enforce strict textual adherence to provided context — don't add general legal commentary or weaken the "Use provided texts ONLY" rule without reason. **Every cited article number must trace back to retrieved context** or the evidence validator will flag it.
+- All user-facing output is Modern Standard Arabic; the persona is "Conan" (كونان). The prompts enforce strict textual adherence to provided context — don't add general legal commentary or weaken the "Use provided texts ONLY" rule without reason. **Every cited article number must trace back to retrieved context** or the evidence validator will flag it.
 - `config.py` is the single source of truth for tunables (paths, model names, retrieval `k`, chunk sizes, temperatures, char limits, confidence weights, reranker config). Don't hard-code these values in routers/services — read from `config`.
 - `RetrievalService` and `RerankerService` are process-wide singletons instantiated at module import. Tests/scripts that need them must call `.load()` once before use.
 - The .env loads at config import time; new env vars belong in both `config.py` and `.env.example`.

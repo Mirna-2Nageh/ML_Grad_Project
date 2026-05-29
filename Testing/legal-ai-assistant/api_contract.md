@@ -1,4 +1,4 @@
-# 🔗 API Contract — Legal AI Assistant ("نور")
+# 🔗 API Contract — Legal AI Assistant ("كونان")
 
 > **For:** .NET Backend Team
 > **Version:** 2.0.0 (breaking changes vs. 1.0.0 — see "Migration" below)

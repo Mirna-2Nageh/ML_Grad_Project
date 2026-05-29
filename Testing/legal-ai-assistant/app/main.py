@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """Load models and indices at startup."""
     logger.info("=" * 60)
-    logger.info("🏛️  نور — Legal AI Assistant — Starting up...")
+    logger.info("🏛️  كونان — Legal AI Assistant — Starting up...")
     logger.info("=" * 60)
 
     try:
@@ -54,12 +54,12 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="نور — Legal AI Assistant API",
+    title="كونان — Legal AI Assistant API",
     description=(
         "RAG-based AI system for Egyptian Criminal Law.\n\n"
         "Features: Chat (with session history), Q&A, Summarization, "
         "Weakness Detection, Defense Memo Generation, Data Ingestion.\n\n"
-        "All responses are in Arabic. Powered by the Nour persona."
+        "All responses are in Arabic. Powered by the Conan persona."
     ),
     version="2.0.0",
     lifespan=lifespan,
@@ -92,7 +92,7 @@ app.include_router(parse.router,     prefix=API_PREFIX, tags=["Document Parsing"
 @app.get("/", include_in_schema=False)
 def root():
     return {
-        "service": "نور — Legal AI Assistant",
+        "service": "كونان — Legal AI Assistant",
         "version": "2.0.0",
         "docs": "/docs",
         "health": f"{API_PREFIX}/health",

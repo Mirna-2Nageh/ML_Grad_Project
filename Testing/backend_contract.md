@@ -1,4 +1,4 @@
-# Nour — Backend API Contract (post-v8)
+# Conan — Backend API Contract (post-v8)
 
 **Service:** Legal AI Assistant for Egyptian Criminal Law
 **Base URL:** `http://localhost:8000/api/v1` (dev) — production base set by the deployment team

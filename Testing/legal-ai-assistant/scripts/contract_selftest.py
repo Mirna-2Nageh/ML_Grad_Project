@@ -427,7 +427,7 @@ def _stream_check(r):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Nour API contract self-test (shape drift detector).")
+    ap = argparse.ArgumentParser(description="Conan API contract self-test (shape drift detector).")
     ap.add_argument("--base-url", default="http://127.0.0.1:8000/api/v1", help="API base URL")
     ap.add_argument("--full", action="store_true", help="also exercise LLM-backed endpoints (~6 LLM calls)")
     args = ap.parse_args()

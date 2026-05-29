@@ -2,7 +2,7 @@
 
 Two purposes:
  1. Strip casual conversational openers (حسناً، بالتأكيد، تمام...) that the
-    "Nour" persona prompt forbids but Gemini/Groq still emit ~30% of the time.
+    "Conan" persona prompt forbids but Gemini/Groq still emit ~30% of the time.
  2. Detect when the answer is a refusal (no legal substance, only the leaked
     template phrase) so confidence scoring can downgrade it instead of treating
     it as a grounded answer.
@@ -13,7 +13,7 @@ answer (post-retry) is selected.
 import re
 from typing import Tuple
 
-# Casual openers — Nour persona forbids these but the LLM emits them anyway.
+# Casual openers — Conan persona forbids these but the LLM emits them anyway.
 # Order matters: longer phrases first so "سوف أجيب" doesn't leave a stranded "سوف".
 _CASUAL_OPENERS = [
     'سوف أجاوب على أسئلتك بتفصيل',

@@ -37,7 +37,7 @@ router = APIRouter()
 @router.post(
     "/chat",
     response_model=ChatResponse,
-    summary="Chat with Nour (Session-Aware)",
+    summary="Chat with Conan (Session-Aware)",
     description=(
         "Main chat endpoint with conversation history and auto-compaction. "
         "Send a session_id to maintain context across turns. Returns answer with "

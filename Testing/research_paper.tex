@@ -1,5 +1,5 @@
 % =============================================================================
-%  Nour — A Hallucination-Resistant RAG Pipeline for Egyptian Criminal Law
+%  Conan — A Hallucination-Resistant RAG Pipeline for Egyptian Criminal Law
 %
 %  Format:  Elsevier Procedia Computer Science (matches teeem.pdf / arabicRag.pdf)
 %  Engine:  XeLaTeX (required for Arabic content)
@@ -46,12 +46,12 @@
 % Conference banner (mirrors the Procedia ACLing style of [1] and [5])
 \dochead{International Conference on AI in Computational Linguistics}
 
-\title{Nour: A Hallucination-Resistant Retrieval-Augmented Generation Pipeline
+\title{Conan: A Hallucination-Resistant Retrieval-Augmented Generation Pipeline
 for Egyptian Criminal Law in Arabic}
 
 % Authors --------------------------------------------------------------------
 \author[a]{Mirna Nageh\corref{cor1}}
-\ead{novagatesemployee@gmail.com}
+\ead{mirnanagehb.w@gmail.com}
 \author[a]{Wageh Mostafa}
 \author[a]{Seif Sherif}
 \author[a]{Mariam Mohamed}
@@ -67,7 +67,7 @@ Retrieval-Augmented Generation (RAG) has emerged as the dominant architecture
 for grounding large language models on domain knowledge, yet its application
 to Arabic legal information retrieval continues to suffer from hallucinated
 statutory citations and confabulation when retrieval surfaces topically-related
-but legally-inadequate context. We present \textbf{Nour}, a production-grade
+but legally-inadequate context. We present \textbf{Conan}, a production-grade
 Arabic legal assistant for the Egyptian Criminal Code (\ar{قانون العقوبات})
 and the Code of Criminal Procedure (\ar{قانون الإجراءات الجنائية}). Our
 contribution is twofold. First, we describe the construction of an Egyptian
@@ -129,8 +129,8 @@ legacy-format source files (overwhelmingly \texttt{.doc} legacy binaries
 requiring manual OCR) gathered from authoritative collections of Egyptian
 legal text and processed into a clean 1{,}057-document corpus, released
 publicly on HuggingFace as \emph{Egyptian\_Criminal\_Legal\_Assistant\_RAG\_V2}.
-We then present \textbf{Nour} (\ar{نور}), a hallucination-resistant Arabic
-legal-AI assistant built on top of this corpus. Nour layers a six-mechanism
+We then present \textbf{Conan} (\ar{كونان}), a hallucination-resistant Arabic
+legal-AI assistant built on top of this corpus. Conan layers a six-mechanism
 grounding-defence pipeline on top of a standard hybrid-retrieval architecture
 (FAISS dense embeddings + BM25 sparse search, fused via Reciprocal Rank
 Fusion, with cross-encoder reranking). We argue---and our evaluation
@@ -401,7 +401,7 @@ mechanism (Section~\ref{sec:rescue}).
 % =============================================================================
 \section{System Architecture}\label{sec:arch}
 
-Nour is implemented as a FastAPI service backed by the 47{,}028-chunk
+Conan is implemented as a FastAPI service backed by the 47{,}028-chunk
 retrieval index described in Section~\ref{sec:dataset}. The base architecture
 follows the pattern established by~\cite{elbeltagy2024,hrimech2025,alghamdi2023}.
 
@@ -551,7 +551,7 @@ example, baseline answers to questions about pre-trial detention
 Code}---when Article~300 of the Penal Code does not address that topic; the
 relevant article is in the Code of Criminal Procedure.
 
-The Nour prompt suite addresses these failure modes with eight rules
+The Conan prompt suite addresses these failure modes with eight rules
 explicitly enforced in the system and user prompts:
 
 \begin{enumerate}
@@ -899,11 +899,11 @@ Abu Shairah et~al.~\cite{alarb2025}
        & verdict prediction
        & --- \\
 \midrule
-\textbf{Nour (this work)}
+\textbf{Conan (this work)}
        & \textbf{Egyptian criminal law}
        & \textbf{hallucination rate}
        & \textbf{0.0\%} \\
-\textbf{Nour (this work)}
+\textbf{Conan (this work)}
        & \textbf{Egyptian criminal law}
        & \textbf{validation pass rate}
        & \textbf{100\%} \\
@@ -991,7 +991,7 @@ with this work supports such scaling.
 We have presented two complementary contributions: an open Arabic
 criminal-law corpus, manually constructed from 933 legacy-format source
 files into 1{,}057 cleaned documents and released publicly on HuggingFace;
-and \textbf{Nour}, a hallucination-resistant Arabic legal RAG system built on
+and \textbf{Conan}, a hallucination-resistant Arabic legal RAG system built on
 top of this corpus, whose six-layer grounding-defence pipeline drives the
 rate of hallucinated statutory citations from a baseline of 28.6\,\% down to
 \textbf{0.0\,\%} on a 28-question benchmark.

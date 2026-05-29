@@ -124,7 +124,7 @@ def main():
     args = parser.parse_args()
 
     print("=" * 60)
-    print("📥  نور — Watch-Folder Ingest")
+    print("📥  كونان — Watch-Folder Ingest")
     print("=" * 60)
     print(f"   Inbox:    {args.inbox}")
     print(f"   Registry: {config.INGEST_REGISTRY_PATH}")

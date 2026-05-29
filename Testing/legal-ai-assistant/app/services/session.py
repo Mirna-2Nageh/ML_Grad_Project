@@ -90,7 +90,7 @@ class Session:
         if self.compact_summary:
             parts.append(f"[ملخص المحادثة السابقة]: {self.compact_summary}")
         for msg in self.messages:
-            role_label = "المستخدم" if msg.role == "user" else "نور"
+            role_label = "المستخدم" if msg.role == "user" else "كونان"
             parts.append(f"{role_label}: {msg.content}")
         return "\n".join(parts) if parts else "لا يوجد سجل محادثة سابق."
 
@@ -253,7 +253,7 @@ class SessionManager:
             if session.compact_summary:
                 conversation_text += f"[ملخص سابق]: {session.compact_summary}\n\n"
             for msg in old_messages:
-                role_label = "المستخدم" if msg.role == "user" else "نور"
+                role_label = "المستخدم" if msg.role == "user" else "كونان"
                 conversation_text += f"{role_label}: {msg.content}\n"
 
         # Call LLM outside the lock — compaction can take seconds.

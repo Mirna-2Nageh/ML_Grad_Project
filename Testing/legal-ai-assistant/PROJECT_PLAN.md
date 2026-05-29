@@ -1,4 +1,4 @@
-# Nour — Egyptian Criminal-Law AI Assistant: Production & Research Plan
+# Conan — Egyptian Criminal-Law AI Assistant: Production & Research Plan
 
 A single reference for architecture, operations, evaluation, risks, and the research
 paper. Pairs with `CLAUDE.md` (run-book) and `api_contract.md` (wire contract).

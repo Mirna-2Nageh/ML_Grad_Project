@@ -228,7 +228,7 @@ def main():
     args = parser.parse_args()
 
     print("=" * 60)
-    print("🏛️  نور — Data Ingestion Pipeline")
+    print("🏛️  كونان — Data Ingestion Pipeline")
     print("=" * 60)
     print(f"   Input:    {args.input_dir}")
     print(f"   Data dir: {args.data_dir}")
