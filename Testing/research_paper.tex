@@ -87,8 +87,16 @@ cross-encoder reranking). On a 28-question Arabic legal benchmark spanning
 substantive and procedural questions, the complete system reduces the
 hallucinated-citation rate from a baseline of 28.6\,\% to \textbf{0.0\,\%} and
 the evidence-validation pass rate from 71.4\,\% to \textbf{100\,\%}. We also
-report a negative result on synonym-based query expansion. We release the
-corpus, the system, the five-version evaluation trail, and a CLI test harness.
+report a negative result on synonym-based query expansion. Beyond
+single-question Q\&A, the system provides case-analysis endpoints---weakness
+analysis, defence-memorandum drafting with an agentic self-check, and
+forensic-consistency checking---governed by an expert-derived
+procedural-defence reasoning checklist paired with a grounding-safe few-shot
+exemplar, and is deployed as a production FastAPI service with multi-provider
+failover, big-context routing, persistent multi-turn sessions, token
+streaming, automated watch-folder ingestion with hot-reload, and a documented
+.NET integration contract. We release the corpus, the system, the five-version
+evaluation trail, and a CLI test harness.
 \end{abstract}
 
 \begin{keyword}
@@ -178,6 +186,14 @@ metadata lookup, and answer rewriting is required.
         chain-of-custody, intent-from-profession) into the case-analysis
         prompts, paired with a \emph{grounding-safe} few-shot exemplar that
         raises reasoning coverage without reintroducing hallucinated citations.
+  \item A \textbf{production-grade operational architecture}
+        (Sections~\ref{sec:arch},~\ref{sec:deploy}): a multi-provider,
+        multi-key failover chain with big-context routing for large case
+        files, persistent compacting multi-turn sessions, token streaming,
+        automated watch-folder ingestion with in-place index hot-reload, an
+        agentic self-check for defence memoranda
+        (Section~\ref{sec:selfcheck}), and a frozen, documented wire contract
+        for an external .NET frontend.
 \end{enumerate}
 
 % =============================================================================
@@ -451,6 +467,47 @@ in $[0,1]$:
 with $w_{\mathrm{rr}}=0.45$, $w_{\mathrm{src}}=0.20$,
 $w_{\mathrm{art}}=0.20$, $w_{\mathrm{top}}=0.15$. Answers below the
 threshold (default 0.5) carry a low-confidence warning.
+
+\paragraph{Conversational layer} Beyond stateless Q\&A, the system exposes a
+multi-turn chat endpoint backed by a thread-safe \texttt{SessionManager}.
+Each \texttt{session\_id} accumulates a turn history; once it exceeds
+\texttt{SESSION\_MAX\_TURNS} (default 6) the older turns are summarised by the
+LLM into a single \ar{[ملخص المحادثة السابقة]} block while the most recent
+\texttt{SESSION\_KEEP\_RECENT} (default 3) turns are kept verbatim, bounding
+prompt growth without losing legal context. Sessions persist to disk as
+atomically-written JSON (write-to-\texttt{.tmp} + \texttt{os.replace}) so they
+survive restarts, and a background pruner evicts sessions idle longer than
+\texttt{SESSION\_TTL\_HOURS} (default 168\,h). A streaming variant
+(\texttt{POST /api/v1/chat/stream}) returns Server-Sent Events as tokens are
+generated, with the terminal event carrying the full confidence, sources, and
+grounding warnings once post-generation validation completes.
+
+\paragraph{Multi-provider resilience} The generation step is served by an
+ordered provider chain---Groq (\texttt{llama-3.3-70b-versatile}) $\rightarrow$
+Cerebras $\rightarrow$ xAI $\rightarrow$ Google Gemini $\rightarrow$ OpenRouter
+Qwen---in which each provider rotates across its own list of API keys on
+HTTP~429/quota errors before the chain falls through to the next provider.
+This multi-key, multi-provider rotation is what lets the service run on free
+tiers despite per-minute and per-day token caps. A complementary
+\emph{big-context routing} rule guards against oversized prompts: each
+provider declares a maximum request size (\texttt{PROVIDER\_MAX\_PROMPT\_CHARS};
+e.g.\ 26{,}000 chars for Groq, 80{,}000 for OpenRouter), and a request whose
+assembled prompt exceeds a provider's budget transparently skips that provider
+and is routed to a larger-context tier. This is what allows the case-analysis
+endpoints to accept full case files (up to 50{,}000 characters) without
+failing on the primary provider's context window.
+
+\paragraph{Configurable embeddings and reranker} The embedding backend is
+pluggable. The default is a local sentence-transformer run on CPU
+(\texttt{BAAI/bge-m3}, 1024-dim, in the reference configuration; the deployed
+index uses \texttt{paraphrase-multilingual-MiniLM-L12-v2}, 384-dim); setting
+\texttt{USE\_REMOTE\_EMBEDDINGS} switches to a remote provider (Google Gemini
+embeddings, rate-limited to 15\,RPM via batching, or OpenRouter). Because
+vector dimensionality and semantics differ, switching the embedding provider
+requires rebuilding the FAISS index. The cross-encoder reranker
+(\texttt{BGE-Reranker-v2-M3}) is likewise toggleable via \texttt{USE\_RERANKER};
+if it is disabled or fails to load, retrieval degrades gracefully to
+RRF-only ordering with no break in behaviour.
 
 % =============================================================================
 \section{Grounding-Defence Pipeline}\label{sec:defence}
@@ -754,6 +811,26 @@ This closes a fabrication mode observed during live validation, where the
 generator appended a plausible-but-uncharged offence to an otherwise
 grounded analysis.
 
+\subsection{Agentic Self-Check for Defence Memoranda}\label{sec:selfcheck}
+
+The defence-memorandum endpoint (\texttt{/defense}) applies an additional
+agentic grounding pass on top of the per-answer evidence validation of
+Section~\ref{sec:validate}. Because a memorandum is a long, multi-paragraph
+document, a single evidence-validation gate is coarse: it flags an ungrounded
+article but does not by itself repair the surrounding argument. Instead, the
+draft memorandum is fed back to the LLM under a dedicated reviewer prompt
+(\texttt{verify\_memo}) whose sole instruction is to make the memo
+\emph{fully grounded} in the provided material---removing or correcting any
+article number not present in the retrieved texts, deleting any assertion the
+case facts do not support, and introducing no new citation or fact---while
+preserving the four-part structure (\ar{الوقائع}, \ar{الإطار القانوني},
+\ar{أوجه الدفاع}, \ar{الطلبات}). This draft\,$\rightarrow$\,verify\,$\rightarrow$\,revise
+loop runs up to \texttt{MEMO\_SELF\_CHECK\_MAX\_ITERS} times (default 1) and
+stops early once a pass introduces no further change. The number of revision
+passes actually applied is surfaced to the client as the
+\texttt{self\_check\_revisions} response field, and the whole mechanism is
+toggleable via \texttt{MEMO\_SELF\_CHECK}.
+
 % =============================================================================
 \section{Document Upload Pipeline}\label{sec:upload}
 
@@ -774,6 +851,20 @@ Supported formats: \texttt{.txt} (with Arabic-encoding fallback), \texttt{.pdf}
 (\texttt{docx2txt}). The legacy \texttt{.doc} binary format is explicitly
 rejected with a helpful Arabic message recommending conversion to
 \texttt{.docx} or \texttt{.pdf}.
+
+\paragraph{Automated ingestion and hot-reload} Permanent ingestion is also
+available without a manual API call. A watch-folder daemon
+(\texttt{watch\_ingest.py}) polls an inbox directory
+(\texttt{INGEST\_INBOX\_DIR}) every \texttt{INGEST\_WATCH\_INTERVAL\_S} seconds
+(default 30) and ingests any new files through the same parser and
+Arabic-cleaning path as the manual pipeline, tracking already-processed paths
+in \texttt{data/.ingested\_files.json} so the operation is idempotent. The
+same scan is exposed as \texttt{POST /api/v1/ingest/scan}, which runs the scan
+in a worker thread and then calls \texttt{reload\_indices()} to hot-swap the
+FAISS, BM25, chunk, and tokenised-corpus state of the running service
+\emph{in place}---without re-initialising the embedding model or restarting
+the process. The four index files are always written and reloaded together to
+keep retrieval state coherent.
 
 % =============================================================================
 \section{Evaluation}\label{sec:eval}
@@ -995,6 +1086,55 @@ distinguishing properties of our setup are worth highlighting:
         the cited prior work, which focus exclusively on the retrieval stage.
 \end{itemize}
 
+\subsection{Cross-model benchmark (protocol)}\label{sec:crossmodel}
+
+To situate Conan against general-purpose frontier models on Arabic legal
+questions, we provide a head-to-head harness (\texttt{benchmark\_llms.py})
+that queries our full RAG system alongside \texttt{openai/gpt-4o-mini} and
+\texttt{anthropic/claude-sonnet-4.5} (both routed through a single OpenRouter
+key for cost parity). It runs in two modes that isolate two distinct
+questions:
+\begin{itemize}
+  \item \emph{RAG mode} --- all three models answer from the \emph{same}
+        retrieved context, isolating answer-synthesis quality from retrieval;
+  \item \emph{Raw mode} --- each model answers from its own parametric
+        knowledge with no retrieval, probing baseline Arabic
+        criminal-law knowledge.
+\end{itemize}
+Each run emits a per-model CSV recording latency, answer length, and the set
+of cited article numbers, against which the same evidence-validation extractor
+(Section~\ref{sec:validate}) is applied to measure citation grounding on equal
+footing. \emph{Quantitative results are pending a full benchmark run and will
+be reported in a subsequent revision;} at the time of writing the comparison
+could not be executed because of API-access limits on the shared OpenRouter
+key. The protocol is documented here so the comparison is reproducible once
+access is restored. Table~\ref{tab:crossmodel} gives the intended reporting
+format.
+
+\begin{table}[!htb]
+\centering
+\small
+\caption{Cross-model comparison reporting template (results pending a full
+run). The grounding column applies the evidence validator of
+Section~\ref{sec:validate} uniformly to all three systems.}
+\label{tab:crossmodel}
+\setlength{\tabcolsep}{5pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{llccc}
+\toprule
+Mode & System & Mean latency & Cited articles & Grounded \% \\
+\midrule
+RAG & Conan (ours)            & --- & --- & --- \\
+RAG & gpt-4o-mini             & --- & --- & --- \\
+RAG & claude-sonnet-4.5       & --- & --- & --- \\
+\midrule
+Raw & Conan (ours)            & --- & --- & --- \\
+Raw & gpt-4o-mini             & --- & --- & --- \\
+Raw & claude-sonnet-4.5       & --- & --- & --- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
 \subsection{Qualitative observations}
 
 Two questions are particularly informative. \textbf{Q3}
@@ -1010,6 +1150,49 @@ rescue in v6 (\ar{تم استرجاع مواد إضافية من قاعدة ال
 الاستشهادات (مواد: 30, 31)}), at 48\,\% confidence. These cases underline
 that no single mechanism is sufficient: each layer recovers a distinct
 class of failure.
+
+% =============================================================================
+\section{Implementation, Deployment, and Integration}\label{sec:deploy}
+
+\paragraph{Service and persona} Conan is packaged as a FastAPI service with a
+thin router layer over the singleton retrieval, reranker, article-lookup, and
+session services, all loaded once at start-up. All user-facing output is in
+Modern Standard Arabic under a consistent government-style persona
+(``\ar{كونان}''), enforced by the system prompts; the persona is deliberately
+formal and citation-bound rather than conversational.
+
+\paragraph{Reference UI} A Streamlit application ships as the reference
+client, exercising every endpoint (Q\&A, multi-turn chat with streaming,
+weakness analysis, defence memo, forensic check, summarisation, and document
+upload) and serving as living documentation of the wire contract.
+
+\paragraph{Containerisation and exposure} The service is containerised with a
+\texttt{Dockerfile} and \texttt{docker-compose.yml} (documented in
+\texttt{DEPLOY.md}) for reproducible deployment. For demonstration and remote
+integration the laptop-hosted backend has been exposed over a Cloudflare quick
+tunnel, allowing an external frontend team to integrate against a live
+instance without dedicated hosting.
+
+\paragraph{Frontend integration contract} The API is consumed by a separate
+.NET frontend. To support this, the response schema is treated as a frozen
+wire contract: the structured shape returned by \texttt{/qa}, \texttt{/chat},
+\texttt{/weakness}, \texttt{/defense}, and \texttt{/forensic}---\texttt{answer}
+or \texttt{analysis} or \texttt{memorandum}, plus \texttt{confidence\_score},
+\texttt{confidence\_factors}, \texttt{sources[]} (with per-source
+\texttt{legal\_topic}, \texttt{article}, \texttt{referenced\_articles},
+\texttt{page}, \texttt{retrieval\_score}, \texttt{rerank\_score}),
+\texttt{warnings[]}, \texttt{conflicts\_detected}, \texttt{latency\_ms}, and
+\texttt{model}---is documented field-by-field in two contract files
+(\texttt{api\_contract.md}, \texttt{backend\_contract.md}) and field names
+cross the wire verbatim. Arabic-language clarification \texttt{warnings} are
+designed to be forwarded to the end-user as-is.
+
+\paragraph{Configurability} Operational parameters---retrieval $k$, chunk
+sizes, confidence weights and threshold, temperatures, provider chain and
+per-provider request budgets, embedding and reranker selection, session
+limits, and self-check iterations---are centralised in a single
+\texttt{config.py} (overridable by environment variables), so behaviour can be
+tuned for a deployment without code changes.
 
 % =============================================================================
 \section{Limitations and Future Work}\label{sec:limits}
