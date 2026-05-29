@@ -1,0 +1,16 @@
+[Unit]
+Description=Conan — ngrok tunnel (reserved static domain)
+After=conan-backend.service network-online.target
+Wants=conan-backend.service network-online.target
+
+[Service]
+Type=simple
+# Don't connect the tunnel until the backend is actually answering /health.
+ExecStartPre=/bin/bash -c 'for i in $(seq 1 100); do curl -sf -m 5 http://localhost:8000/api/v1/health >/dev/null && exit 0; sleep 3; done; echo "backend not healthy" >&2; exit 1'
+ExecStart=/home/marno000onaaa/bin/ngrok http --url=pushiness-jumble-policy.ngrok-free.dev 8000 --log=stdout
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=360
+
+[Install]
+WantedBy=default.target
