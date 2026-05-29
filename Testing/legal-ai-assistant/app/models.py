@@ -176,7 +176,14 @@ class ErrorResponse(BaseModel):
 class ChatRequest(BaseModel):
     """Chat request with session ID for conversation continuity."""
     message: str = Field(..., description="User message in Arabic", min_length=1)
-    session_id: str = Field(default="default", description="Session ID for conversation continuity")
+    session_id: Optional[str] = Field(
+        default=None,
+        description=(
+            "Session ID for conversation continuity. If omitted, the server generates a "
+            "fresh UUID and returns it in the response — send it back on the next turn to "
+            "keep context. (Previously defaulted to a shared 'default' session.)"
+        ),
+    )
     k: int = Field(default=7, description="Number of context documents to retrieve", ge=1, le=20)
 
     model_config = {"json_schema_extra": {

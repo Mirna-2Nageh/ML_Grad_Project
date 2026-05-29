@@ -17,6 +17,7 @@ from app.services.confidence import (
 )
 from app.services.postprocessing import postprocess_answer
 from app.services.article_lookup import article_lookup_service
+from app.services.answer_cache import answer_cache
 from app.services.upload_helper import (
     parse_uploaded_file, parse_uploaded_text, format_doc_for_context,
 )
@@ -304,11 +305,26 @@ async def _run_qa(
     description="Ask a legal question about Egyptian Criminal Law. Returns a grounded answer with citations and a confidence score.",
 )
 async def legal_qa(req: QARequest):
-    return await _run_qa(
+    # Cache lookup (stateless /qa only). A hit costs 0 LLM tokens — survives the
+    # free-tier budget and makes pre-warmed demo questions instant.
+    if config.USE_ANSWER_CACHE:
+        t0 = time.time()
+        cached = answer_cache.get(req.question, req.k, req.prompt_style)
+        if cached is not None:
+            cached["latency_ms"] = round((time.time() - t0) * 1000, 1)
+            cached["retrieval_ms"] = 0.0
+            return QAResponse(**cached)
+
+    resp = await _run_qa(
         question=req.question,
         k=req.k,
         prompt_style=req.prompt_style,
     )
+
+    # Only cache real LLM answers — never errors or the input-gate refusal.
+    if config.USE_ANSWER_CACHE and resp.model not in ("error", "input_gate"):
+        answer_cache.put(req.question, req.k, req.prompt_style, resp.model_dump())
+    return resp
 
 
 @router.post(

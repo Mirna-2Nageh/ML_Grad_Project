@@ -9,6 +9,7 @@ import re
 import time
 import random
 import logging
+import threading
 from typing import AsyncGenerator, Optional, Tuple
 from openai import OpenAI, AsyncOpenAI
 import config
@@ -147,6 +148,7 @@ def get_groq_async_client() -> AsyncOpenAI:
 
 # Cache OpenAI-compatible clients by (base_url, key) so multi-key rotation reuses connections.
 _oai_client_cache: dict = {}
+_async_oai_client_cache: dict = {}
 
 
 def _client_for(base_url: str, key: str) -> OpenAI:
@@ -154,6 +156,35 @@ def _client_for(base_url: str, key: str) -> OpenAI:
     if ck not in _oai_client_cache:
         _oai_client_cache[ck] = OpenAI(base_url=base_url, api_key=key)
     return _oai_client_cache[ck]
+
+
+def _async_client_for(base_url: str, key: str) -> AsyncOpenAI:
+    ck = (base_url, key)
+    if ck not in _async_oai_client_cache:
+        _async_oai_client_cache[ck] = AsyncOpenAI(base_url=base_url, api_key=key)
+    return _async_oai_client_cache[ck]
+
+
+# ── In-process rate gate ──
+# Serializes and spaces out physical LLM provider requests so the free-tier
+# per-minute token/request limits aren't blown by the multi-call-per-request
+# pattern (draft → retry → rescue) or by concurrent users. Set LLM_MIN_INTERVAL_S=0
+# to disable. The lock makes the spacing correct across worker threads (call_llm
+# runs under asyncio.to_thread) and the streaming path gates via to_thread too.
+_rate_lock = threading.Lock()
+_last_llm_call_ts = 0.0
+
+
+def _rate_gate() -> None:
+    interval = getattr(config, "LLM_MIN_INTERVAL_S", 0.0)
+    if interval <= 0:
+        return
+    global _last_llm_call_ts
+    with _rate_lock:
+        wait = interval - (time.monotonic() - _last_llm_call_ts)
+        if wait > 0:
+            time.sleep(wait)
+        _last_llm_call_ts = time.monotonic()
 
 
 def _is_rate_limited(err: Exception) -> bool:
@@ -175,6 +206,7 @@ def _try_openai_chat(base_url, keys, model, prompt, system_msg, temp, max_tokens
     for ki, key in enumerate(keys):
         client = _client_for(base_url, key)
         for attempt in range(retries):
+            _rate_gate()
             try:
                 resp = client.chat.completions.create(
                     model=model, messages=messages, temperature=temp, max_tokens=max_tokens,
@@ -212,6 +244,7 @@ def _try_gemini(prompt, system_msg, temp, max_tokens):
     )
     for model_id in ['models/gemini-2.5-flash', 'models/gemini-2.0-flash', 'models/gemini-2.0-flash-lite']:
         for attempt in range(config.GEMINI_MAX_RETRIES):
+            _rate_gate()
             try:
                 response = client.models.generate_content(
                     model=model_id, contents=full_prompt, config=gen_config,
@@ -314,40 +347,85 @@ async def async_stream_llm(
     system_msg: str = None,
     feature: str = "default",
     model: Optional[str] = None,
+    meta: Optional[dict] = None,
 ) -> AsyncGenerator[str, None]:
-    """Async generator yielding LLM output chunks from an OpenAI-compatible provider.
+    """Resilient async generator yielding LLM output chunks.
 
-    Uses xAI Grok when LLM_PROVIDER=="xai", else OpenRouter. Gemini's native streaming
-    API differs and is not wired here; non-streaming endpoints retain the full fallback chain.
+    Tries the configured primary provider (groq/xai) with multi-key rotation, then
+    OpenRouter, all streaming. If every streaming attempt fails *before* producing any
+    token, falls back to the full non-streaming chain (`call_llm`: primary → Gemini →
+    OpenRouter) and chunks the result out so the SSE contract still holds.
+
+    `meta` (if passed) is populated with:
+      - meta['model'] — the provider/model that actually produced the answer
+      - meta['error'] = True — only if every provider failed (no content)
+    Callers should read meta['model'] for the final SSE event and treat meta['error']
+    as a signal to emit a clean user-facing error instead of leaking provider internals.
     """
+    import asyncio
+    if meta is None:
+        meta = {}
     temp = temperature if temperature is not None else config.TEMPERATURES.get(
         feature, config.TEMPERATURES["default"]
     )
-    if config.LLM_PROVIDER == "xai" and config.XAI_API_KEY:
-        client = get_xai_async_client()
-        stream_model = model or config.XAI_MODEL
-    elif config.LLM_PROVIDER == "groq" and config.GROQ_API_KEY:
-        client = get_groq_async_client()
-        stream_model = model or config.GROQ_MODEL
-    else:
-        client = get_async_client()
-        stream_model = model or config.LLM_MODEL
+
     messages = []
     if system_msg:
         messages.append({"role": "system", "content": system_msg})
     messages.append({"role": "user", "content": prompt})
 
-    stream = await client.chat.completions.create(
-        model=stream_model,
-        messages=messages,
-        temperature=temp,
-        max_tokens=max_tokens,
-        stream=True,
+    # Ordered streaming attempts: (base_url, keys, model, label).
+    attempts = []
+    if config.LLM_PROVIDER == "xai" and config.XAI_API_KEYS:
+        attempts.append((config.XAI_BASE_URL, config.XAI_API_KEYS, model or config.XAI_MODEL, "xAI"))
+    elif config.LLM_PROVIDER == "groq" and config.GROQ_API_KEYS:
+        attempts.append((
+            config.GROQ_BASE_URL, config.GROQ_API_KEYS,
+            model or config.MODEL_BY_FEATURE.get(feature, config.GROQ_MODEL), "Groq",
+        ))
+    if config.OPENROUTER_API_KEYS:
+        attempts.append((config.OPENROUTER_BASE_URL, config.OPENROUTER_API_KEYS, config.LLM_MODEL, "OpenRouter"))
+
+    for base_url, keys, stream_model, label in attempts:
+        for ki, key in enumerate(keys):
+            await asyncio.to_thread(_rate_gate)
+            client = _async_client_for(base_url, key)
+            try:
+                stream = await client.chat.completions.create(
+                    model=stream_model, messages=messages,
+                    temperature=temp, max_tokens=max_tokens, stream=True,
+                )
+            except Exception as e:
+                logger.warning(f"{label} stream key#{ki+1}/{len(keys)} open failed: {e}")
+                continue  # rotate to next key / provider — nothing emitted yet
+            # Stream opened — commit to this provider.
+            meta["model"] = stream_model
+            produced = False
+            try:
+                async for chunk in stream:
+                    if not chunk.choices:
+                        continue
+                    token = getattr(chunk.choices[0].delta, "content", None)
+                    if token:
+                        produced = True
+                        yield token
+                return  # completed cleanly
+            except Exception as e:
+                logger.warning(f"{label} stream broke mid-generation: {e}")
+                if produced:
+                    return  # already streamed partial output; can't safely restart
+                # else fall through to next key / provider
+
+    # Every streaming attempt failed before producing output → non-streaming full chain.
+    logger.warning("All streaming providers failed; falling back to non-streaming chain.")
+    text, _, model_used = await asyncio.to_thread(
+        call_llm, prompt, temp, max_tokens, system_msg, feature
     )
-    async for chunk in stream:
-        if not chunk.choices:
-            continue
-        delta = chunk.choices[0].delta
-        token = getattr(delta, "content", None)
-        if token:
-            yield token
+    meta["model"] = model_used
+    if is_llm_error(model_used) or not text:
+        meta["error"] = True
+        return
+    # Chunk the full answer so the client still receives an incremental stream.
+    step = 60
+    for i in range(0, len(text), step):
+        yield text[i:i + step]

@@ -4,6 +4,7 @@ Two flavors: /chat (request-response) and /chat/stream (SSE token stream for fro
 """
 import json
 import time
+import uuid
 import logging
 from typing import Optional
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form
@@ -45,6 +46,11 @@ router = APIRouter()
 )
 async def chat(req: ChatRequest):
     t0 = time.time()
+
+    # Resolve session: a missing/blank id gets a fresh UUID (returned to the client) so
+    # anonymous callers don't all collide on one shared "default" transcript.
+    if not req.session_id:
+        req.session_id = uuid.uuid4().hex
 
     # 0. Input gate — short-circuit fragment/header inputs with a polite ask
     # for a complete question. Still records the turn so chat history is coherent.
@@ -296,11 +302,17 @@ async def chat(req: ChatRequest):
         "\"confidence_factors\": {...}, \"sources\": [...], \"warnings\": [...], \"conflicts_detected\": false, "
         "\"turn_count\": ..., \"latency_ms\": ..., \"model\": \"...\"}`\n"
         "- On error:            `data: {\"error\": \"...\", \"done\": true}`\n\n"
-        "Note: streaming uses OpenRouter (Qwen). Non-streaming /chat retains the Gemini-first chain."
+        "Streaming tries the configured primary provider (Groq) with multi-key rotation, "
+        "then OpenRouter, then falls back to the full non-streaming chain chunked out — "
+        "so a rate-limited primary degrades gracefully instead of failing the request."
     ),
 )
 async def chat_stream(req: ChatRequest):
     t0 = time.time()
+
+    # Resolve session id (fresh UUID when absent) — same as /chat.
+    if not req.session_id:
+        req.session_id = uuid.uuid4().hex
 
     # 0. Input gate — emit the polite-ask answer as a single SSE event and stop.
     # Same fragment/header rejection as the non-streaming /chat endpoint.
@@ -358,15 +370,33 @@ async def chat_stream(req: ChatRequest):
 
     async def event_generator():
         full_answer = ""
+        meta: dict = {}
         try:
             async for token in async_stream_llm(
                 prompt, feature="qa", system_msg=SYSTEM_MESSAGES["chat"],
+                max_tokens=config.LLM_MAX_TOKENS_QA, meta=meta,
             ):
                 full_answer += token
                 yield f"data: {json.dumps({'chunk': token, 'done': False}, ensure_ascii=False)}\n\n"
-        except Exception as e:
+        except Exception:
             logger.exception("chat/stream LLM error")
-            yield f"data: {json.dumps({'error': str(e), 'done': True}, ensure_ascii=False)}\n\n"
+
+        # If no provider produced any content, emit a clean Arabic error — never leak the
+        # raw provider exception/JSON to the client. Don't record a failed turn.
+        if not full_answer.strip():
+            err_final = {
+                "done": True,
+                "session_id": req.session_id,
+                "error": LLM_ERROR_NOTICE_AR,
+                "confidence_score": 0.0,
+                "sources": [],
+                "warnings": [LLM_ERROR_NOTICE_AR],
+                "conflicts_detected": False,
+                "turn_count": session.turn_count,
+                "latency_ms": round((time.time() - t0) * 1000, 1),
+                "model": meta.get("model", "error"),
+            }
+            yield f"data: {json.dumps(err_final, ensure_ascii=False)}\n\n"
             return
 
         # 4. Post-generation: persist + validate + score + final event
@@ -402,7 +432,7 @@ async def chat_stream(req: ChatRequest):
             "conflicts_detected": False,
             "turn_count": info.get("turn_count", 0),
             "latency_ms": round((time.time() - t0) * 1000, 1),
-            "model": config.LLM_MODEL,
+            "model": meta.get("model", ""),
         }
         yield f"data: {json.dumps(final_event, ensure_ascii=False)}\n\n"
 

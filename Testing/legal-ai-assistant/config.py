@@ -64,6 +64,10 @@ GEMINI_THINKING_BUDGET = int(os.getenv("GEMINI_THINKING_BUDGET", "512"))
 # with exponential backoff before falling through to the next tier / OpenRouter.
 GEMINI_MAX_RETRIES = int(os.getenv("GEMINI_MAX_RETRIES", "3"))
 GEMINI_RETRY_BASE_DELAY = float(os.getenv("GEMINI_RETRY_BASE_DELAY", "2.0"))  # seconds; doubles each retry
+# In-process rate gate: minimum seconds between physical LLM provider requests. Spaces out
+# the multi-call-per-request pattern (draft → retry → rescue) and concurrent users so the
+# free-tier per-minute token/request budget isn't burst-exhausted (413). 0 disables.
+LLM_MIN_INTERVAL_S = float(os.getenv("LLM_MIN_INTERVAL_S", "2.0"))
 EMBED_MODEL_NAME = os.getenv("EMBED_MODEL", "BAAI/bge-m3")
 USE_REMOTE_EMBEDDINGS = os.getenv("USE_REMOTE_EMBEDDINGS", "False").lower() == "true"
 EMBED_DIMENSIONS = int(os.getenv("EMBED_DIMENSIONS", "1024")) # 1024 for BGE-M3
@@ -139,12 +143,25 @@ RETRIEVAL_K_RERANK = int(os.getenv("RETRIEVAL_K_RERANK", "30"))  # candidates fe
 # Confidence Scoring (Phase 1 heuristic)
 # ──────────────────────────────────────────────
 CONFIDENCE_WEIGHTS = {
-    "rerank":             0.45,  # mean rerank score over final top-k (sigmoid-bound)
+    "rerank":             0.30,  # mean rerank score over final top-k (gamma-calibrated)
     "source_count":       0.20,  # min(1, n_sources / 5)
-    "article_validation": 0.20,  # 1.0 if every cited article appears in retrieved context, else 0
-    "topic_match":        0.15,  # 1.0 if any source's legal_topic appears in the question
+    "article_validation": 0.30,  # 1.0 if every cited article appears in retrieved context, else 0
+    "topic_match":        0.20,  # 1.0 if any source's legal_topic appears in the question
 }
+# bge-reranker-v2-m3 sigmoid scores sit low (~0.1) on Arabic legal text, which previously
+# made well-grounded answers read as "low confidence" even when correct. Gamma<1 lifts the
+# squashed mid-range (0.1 -> ~0.32 at 0.5) without saturating strong matches. 1.0 = off.
+RERANK_CALIBRATION_GAMMA = float(os.getenv("RERANK_CALIBRATION_GAMMA", "0.5"))
 CONFIDENCE_THRESHOLD_CLARIFY = float(os.getenv("CONFIDENCE_THRESHOLD_CLARIFY", "0.5"))
+
+# ──────────────────────────────────────────────
+# Answer cache (free-tier budget saver for stateless /qa)
+# ──────────────────────────────────────────────
+# Serving a cached answer costs 0 LLM tokens. Exact normalized-question match only.
+USE_ANSWER_CACHE = os.getenv("USE_ANSWER_CACHE", "True").lower() == "true"
+ANSWER_CACHE_MAX = int(os.getenv("ANSWER_CACHE_MAX", "512"))
+ANSWER_CACHE_PERSIST = os.getenv("ANSWER_CACHE_PERSIST", "True").lower() == "true"
+ANSWER_CACHE_PATH = os.getenv("ANSWER_CACHE_PATH", os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "answer_cache.json"))
 
 # ──────────────────────────────────────────────
 # Multi-Query Retrieval + Domain-Aware Routing (Phase 2)

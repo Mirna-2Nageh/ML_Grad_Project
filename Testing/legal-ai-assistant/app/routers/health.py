@@ -4,6 +4,7 @@ import config
 from app.models import HealthResponse
 from app.services.retrieval import retrieval_service
 from app.services.reranker import reranker_service
+from app.services.llm import primary_model
 
 router = APIRouter()
 
@@ -18,7 +19,7 @@ def health_check():
         status=status,
         vectors=retrieval_service.vectorstore.index.ntotal if (retrieval_service.is_loaded and retrieval_service.vectorstore) else 0,
         chunks=len(retrieval_service.chunks) if (retrieval_service.is_loaded and retrieval_service.chunks) else 0,
-        model=config.LLM_MODEL,
+        model=primary_model(),
         embedding_model=config.EMBED_MODEL_NAME,
         reranker_loaded=reranker_service.is_loaded,
         reranker_model=config.RERANKER_MODEL if reranker_service.is_loaded else "",

@@ -117,6 +117,11 @@ def compute_confidence(
         return sum(xs) / len(xs) if xs else 0.0
 
     rerank_signal = max(0.0, min(1.0, mean(rerank_scores)))
+    # Gamma-calibrate the (low) cross-encoder sigmoid so grounded answers don't read as
+    # "low confidence". gamma=1.0 disables. See config.RERANK_CALIBRATION_GAMMA.
+    gamma = getattr(config, "RERANK_CALIBRATION_GAMMA", 1.0)
+    if gamma != 1.0 and rerank_signal > 0.0:
+        rerank_signal = rerank_signal ** gamma
     source_signal = min(1.0, source_count / 5.0)
     article_signal = 1.0 if article_validation_pass else 0.0
     topic_signal = 1.0 if topic_match_hit else 0.0
