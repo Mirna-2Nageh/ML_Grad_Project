@@ -1,7 +1,7 @@
 # Conan — Backend API Contract (post-v8)
 
 **Service:** Legal AI Assistant for Egyptian Criminal Law
-**Base URL:** `http://localhost:8000/api/v1` locally, or the Cloudflare tunnel URL when integrating remotely — **see the "Connecting to the API" section below for the exact URL, the tunnel, CORS, encoding, and timeouts. Read that first.**
+**Base URL (stable, for the backend team):** `https://pushiness-jumble-policy.ngrok-free.dev` — append `/api/v1/...`. This URL does **not** change across restarts. (`http://localhost:8000` when running on the same machine.) **See the "Connecting to the API" section below for the full detail — read it first.**
 **Auth:** None at the moment. CORS is permissive (`*`). Lock down in production.
 **Response language:** Modern Standard Arabic in user-facing fields; English in keys. All payloads are UTF-8.
 **OpenAPI spec:** live at `GET /docs` (Swagger UI) and `GET /openapi.json` (works through the tunnel too).
@@ -15,15 +15,23 @@ Everything you need to reach the service. There is **no extra setup, key, or coo
 
 ### How to reach the service
 
-There are two base URLs. Append every path in this document (which already starts with `/api/v1`) to whichever base you are using.
+Append every path in this document (which already starts with `/api/v1`) to whichever base you are using.
 
 | Environment | Base URL | When |
 |---|---|---|
+| **Remote — stable (use this)** | `https://pushiness-jumble-policy.ngrok-free.dev` | The integration URL. Backend runs on the team's laptop, exposed via a **reserved ngrok domain**. **Does not change on restart.** |
 | **Local** (same machine as the backend) | `http://localhost:8000` | You run the backend yourself. |
-| **Remote (Cloudflare tunnel)** | `https://<something>.trycloudflare.com` | The normal case: the backend runs on the team's laptop and is exposed to you over a Cloudflare tunnel. |
 
 So a full request URL is, e.g.:
-`https://<something>.trycloudflare.com/api/v1/qa`  →  `POST` with the JSON body from §3.1.
+`https://pushiness-jumble-policy.ngrok-free.dev/api/v1/qa`  →  `POST` with the JSON body from §3.1.
+
+### ngrok specifics (important)
+
+- **It's a reserved/static domain**, so the URL is **permanent** — hard-coding it in your config is fine (unlike a Cloudflare quick tunnel).
+- **Send the header `ngrok-skip-browser-warning: true`** on every request. ngrok's free tier shows an HTML interstitial warning page on the *first* browser-style GET; this header bypasses it so your client always gets the real JSON. (Pure JSON API calls usually skip it already, but send the header to be safe — especially if you ever open `/docs` in a browser.)
+- The domain is HTTPS (ngrok-managed TLS) → your `HttpClient` gets TLS for free.
+- The tunnel only serves while the backend laptop is awake and the ngrok agent is running. If the team's machine is off, requests fail with connection errors (not a code bug on your side).
+- A **Cloudflare quick tunnel** may also be provided as a backup (`https://<random>.trycloudflare.com`); that one *does* rotate on restart and is shared out-of-band. Prefer the ngrok URL above.
 
 ### The Cloudflare tunnel — full detail
 
@@ -66,15 +74,15 @@ That `https://....trycloudflare.com` address **is the base URL** for everything 
 ### Smoke test (do this first, before wiring up the client)
 
 ```bash
-# replace with the current tunnel URL (or http://localhost:8000 locally)
-BASE="https://<something>.trycloudflare.com"
+BASE="https://pushiness-jumble-policy.ngrok-free.dev"   # stable ngrok URL (or http://localhost:8000 locally)
 
 # 1) Liveness — no LLM, instant. Expect {"status":"ok", ...}
-curl -s "$BASE/api/v1/health"
+curl -s -H 'ngrok-skip-browser-warning: true' "$BASE/api/v1/health"
 
 # 2) A real grounded answer (UTF-8 Arabic). Use a long timeout.
 curl -s --max-time 180 -X POST "$BASE/api/v1/qa" \
   -H 'Content-Type: application/json; charset=utf-8' \
+  -H 'ngrok-skip-browser-warning: true' \
   -d '{"question":"ما هي عقوبة السرقة بالإكراه؟"}'
 ```
 
