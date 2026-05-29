@@ -5,6 +5,7 @@
 **Auth:** None at the moment. CORS is permissive (`*`). Lock down in production.
 **Response language:** Modern Standard Arabic in user-facing fields; English in keys.
 **OpenAPI spec:** live at `GET /docs` (Swagger UI) and `GET /openapi.json`.
+**Last updated:** 2026-05-29 (branch `llm-reliability-expert-rules`, tip `0c927a3`) — system renamed Nour → Conan; LLM reliability + multi-provider + answer-cache + confidence-recalibration series. See §13 for the full changelog. Verify any deployment with `python legal-ai-assistant/scripts/contract_selftest.py --full`.
 
 This document supersedes `legal-ai-assistant/api_contract.md` (pre-v8) and reflects every endpoint added or modified during the v3 → v8 accuracy work plus the document-upload + iterative-retrieval rollouts.
 
@@ -145,7 +146,7 @@ Smoke-test endpoint. Cheap, no LLM calls.
   "status": "ok",                                          // "ok" | "degraded" | "loading"
   "vectors": 47028,                                        // count in FAISS
   "chunks": 47028,                                         // count in chunks.pkl
-  "model": "qwen/qwen-2.5-72b-instruct",                   // configured LLM
+  "model": "llama-3.3-70b-versatile",                      // ACTIVE primary model — dynamic; may be groq/cerebras/gemini on fallback. Do not hard-code.
   "embedding_model": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
   "reranker_loaded": true,
   "reranker_model": "BAAI/bge-reranker-v2-m3",
@@ -269,7 +270,7 @@ Same body as `/chat`. Returns `text/event-stream` (SSE):
 - On error: `data: {"error": "...", "done": true}\n\n`
 
 Notes:
-- Streaming uses OpenRouter (Qwen). Non-streaming `/chat` retains the full Gemini-first fallback chain.
+- Streaming tries the configured primary (Groq) with multi-key rotation, then OpenRouter, then falls back to the full non-streaming chain (chunked out) — a rate-limited primary degrades gracefully instead of failing. On total failure it emits one clean error event (`{"error": "<Arabic message>", "done": true, ...}`), never a raw provider error. The `model` in the final event reflects whichever provider actually answered.
 - The streaming endpoint applies the input gate but **does not** run the corrective retry or article-lookup rescue (those are incompatible with token-by-token streaming). For maximum grounding, use `/chat` not `/chat/stream`.
 
 ### 4.3 `GET /api/v1/chat/{session_id}`
@@ -592,5 +593,19 @@ Behavioural changes to **existing** endpoints since the previous contract:
 | `POST /chat` | same defence pipeline + reads session attachments every turn | `14f1d45`, `03249a4`, `85865c7` |
 | `POST /chat/stream` | input gate added; rescue not applied (streaming-incompatible) | `14f1d45`, `03249a4` |
 | `DELETE /chat/{sid}` | now also handles disk-only sessions (lazy-load) | `cded4e0` |
+
+### Latest series — reliability, multi-provider & rename (2026-05-29, branch `llm-reliability-expert-rules`)
+
+| Change | Effect on the contract | Commit |
+|---|---|---|
+| **System renamed Nour → Conan** (Arabic persona نور → كونان) | Cosmetic — appears in `answer` text & banners; **no field changes**. | `0c927a3` |
+| `session_id` is now **OPTIONAL** | Omit on turn 1 → server returns a fresh UUID (previously a shared `"default"`). Echo it back on later turns. **This is the only client-visible semantic change to adopt.** | `f6da853` |
+| `POST /chat/stream` hardened | primary → OpenRouter → non-streaming fallback; clean Arabic error event on total failure (never a raw provider error). Same SSE event shapes. | `f6da853` |
+| Confidence recalibrated | `confidence_score` shifts upward for grounded answers (still `[0,1]`, threshold 0.5). Treat as **dynamic**. | `f6da853` |
+| Answer cache for `/qa` | Repeated identical questions return instantly (`latency_ms`≈0); **identical response shape**. | `f6da853` |
+| Multi-provider chain (Cerebras + multi-project Gemini) + rate gate | `model` may now report `cerebras`/`gemini`/`groq`. Treat `model` as **dynamic**. | `0636740` |
+| `/health` `model` field | Reports the **active** primary model, not a static default. | `f6da853` |
+
+A runnable **contract self-test** ships at `legal-ai-assistant/scripts/contract_selftest.py`: it asserts every response shape against this document (`--full` exercises the LLM endpoints too; a `503` is reported as SKIP, not a failure). Both teams should run it in CI to catch drift automatically.
 
 The `confidence_factors` and `SourceInfo` schemas are **stable wire contract** — adding fields is backwards-compatible (frontend should tolerate unknown keys); renaming or removing is a breaking change.
