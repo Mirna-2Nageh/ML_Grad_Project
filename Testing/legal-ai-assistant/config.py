@@ -24,14 +24,19 @@ def _key_list(*env_names):
 
 OPENROUTER_API_KEYS = _key_list("OPENROUTER_API_KEY", "OPENROUTER_API_KEYS")
 OPENROUTER_API_KEY = OPENROUTER_API_KEYS[0] if OPENROUTER_API_KEYS else ""  # back-compat (first key)
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
+# Gemini supports multiple project keys: each Google Cloud project has its own free
+# 20-req/day quota, so listing several keys (GOOGLE_API_KEYS=k1,k2) multiplies the daily
+# budget — the router rotates to the next project when one hits its daily quota.
+GOOGLE_API_KEYS = _key_list("GOOGLE_API_KEY", "GOOGLE_API_KEYS")
+GOOGLE_API_KEY = GOOGLE_API_KEYS[0] if GOOGLE_API_KEYS else ""  # back-compat (first project; used by embeddings)
 EMBED_PROVIDER = os.getenv("EMBED_PROVIDER", "google") # 'google' or 'openai' (OpenRouter)
 
 # ──────────────────────────────────────────────
 # Model Configuration
 # ──────────────────────────────────────────────
-# Primary LLM provider: "gemini" | "xai" | "groq" (all OpenAI-compatible except gemini).
-# The chosen primary is tried first, then Gemini (if GOOGLE_API_KEY set), then OpenRouter.
+# Primary LLM provider: "gemini" | "groq" | "cerebras" | "xai" (all OpenAI-compatible
+# except gemini). The chosen primary is tried first, then the other OpenAI-compatible
+# backups (groq → cerebras → xai), then Gemini (multi-project), then OpenRouter.
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "gemini").lower()
 LLM_MODEL = os.getenv("LLM_MODEL", "qwen/qwen-2.5-72b-instruct")  # OpenRouter fallback model
 
@@ -46,6 +51,13 @@ GROQ_API_KEYS = _key_list("GROQ_API_KEY", "GROQ_API_KEYS")
 GROQ_API_KEY = GROQ_API_KEYS[0] if GROQ_API_KEYS else ""  # back-compat
 GROQ_BASE_URL = os.getenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1")
 GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")  # default model
+
+# Cerebras (free tier, OpenAI-compatible, very fast — generous free daily budget + a
+# llama-3.3-70b model). A strong free backup to Groq. Free key at https://cloud.cerebras.ai
+CEREBRAS_API_KEYS = _key_list("CEREBRAS_API_KEY", "CEREBRAS_API_KEYS")
+CEREBRAS_API_KEY = CEREBRAS_API_KEYS[0] if CEREBRAS_API_KEYS else ""  # back-compat
+CEREBRAS_BASE_URL = os.getenv("CEREBRAS_BASE_URL", "https://api.cerebras.ai/v1")
+CEREBRAS_MODEL = os.getenv("CEREBRAS_MODEL", "llama-3.3-70b")  # verify exact id at cloud.cerebras.ai
 # Per-feature model routing: heavy reasoning (defense memo, weakness analysis) gets the
 # strong model; high-volume QA/chat can use a cheaper/faster one. Falls back to GROQ_MODEL.
 GROQ_MODEL_STRONG = os.getenv("GROQ_MODEL_STRONG", "llama-3.3-70b-versatile")

@@ -1,9 +1,10 @@
 """
-Multi-provider LLM client. Primary provider is config.LLM_PROVIDER:
-  - "gemini": Google Gemini (native API) → OpenRouter fallback.
-  - "xai":    Grok via xAI (OpenAI-compatible) → Gemini → OpenRouter.
-  - "groq":   Groq free tier (OpenAI-compatible) → Gemini → OpenRouter.
-All OpenAI-compatible providers (xAI, Groq, OpenRouter) share one chat helper.
+Multi-provider LLM client. The configured primary (config.LLM_PROVIDER) is tried first,
+then the remaining OpenAI-compatible backups (groq → cerebras → xAI), then Gemini
+(rotating across multiple project keys), then OpenRouter. Every OpenAI-compatible provider
+(Groq, Cerebras, xAI, OpenRouter) shares one chat helper with per-key rotation on
+rate-limit/quota; Gemini rotates project keys on daily-quota exhaustion. This layered
+chain is what keeps the service answering when any single free tier is exhausted.
 """
 import re
 import time
@@ -46,11 +47,33 @@ FALLBACK_NOTICE_AR = (
 
 def primary_model() -> str:
     """The model name the system prefers, given the configured provider."""
-    if config.LLM_PROVIDER == "xai" and config.XAI_API_KEY:
+    if config.LLM_PROVIDER == "xai" and config.XAI_API_KEYS:
         return config.XAI_MODEL
-    if config.LLM_PROVIDER == "groq" and config.GROQ_API_KEY:
+    if config.LLM_PROVIDER == "cerebras" and config.CEREBRAS_API_KEYS:
+        return config.CEREBRAS_MODEL
+    if config.LLM_PROVIDER == "groq" and config.GROQ_API_KEYS:
         return config.GROQ_MODEL
     return "gemini-2.5-flash"
+
+
+def _oai_provider_chain(feature: str):
+    """Ordered OpenAI-compatible providers — configured-primary first, then backups —
+    each as (base_url, keys, model, label). Only providers that actually have a key are
+    included. OpenRouter is handled separately so it stays the final fallback."""
+    providers = {
+        "groq": (config.GROQ_BASE_URL, config.GROQ_API_KEYS,
+                 config.MODEL_BY_FEATURE.get(feature, config.GROQ_MODEL), "Groq"),
+        "cerebras": (config.CEREBRAS_BASE_URL, config.CEREBRAS_API_KEYS,
+                     config.CEREBRAS_MODEL, "Cerebras"),
+        "xai": (config.XAI_BASE_URL, config.XAI_API_KEYS, config.XAI_MODEL, "xAI"),
+    }
+    order = []
+    if config.LLM_PROVIDER in providers:
+        order.append(config.LLM_PROVIDER)
+    for name in ("groq", "cerebras", "xai"):
+        if name not in order:
+            order.append(name)
+    return [providers[n] for n in order if providers[n][1]]
 
 # Sentinels returned by call_llm when every provider in the fallback chain failed.
 LLM_ERROR_MODEL = "error"
@@ -225,8 +248,10 @@ def _try_openai_chat(base_url, keys, model, prompt, system_msg, temp, max_tokens
 
 
 def _try_gemini(prompt, system_msg, temp, max_tokens):
-    """Try Gemini across model tiers with transient-error backoff. Returns (text, model) or None."""
-    if not config.GOOGLE_API_KEY:
+    """Try Gemini across multiple project keys (rotating on daily-quota exhaustion) and
+    model tiers (with transient-error backoff). Each Google Cloud project has its own free
+    daily quota, so multiple keys multiply the budget. Returns (text, model) or None."""
+    if not config.GOOGLE_API_KEYS:
         return None
     try:
         from google import genai
@@ -235,38 +260,51 @@ def _try_gemini(prompt, system_msg, temp, max_tokens):
         logger.warning(f"google-genai import failed: {e}")
         return None
 
-    client = genai.Client(api_key=config.GOOGLE_API_KEY)
     full_prompt = f"{system_msg}\n\n{prompt}" if system_msg else prompt
     gen_config = types.GenerateContentConfig(
         temperature=temp,
         max_output_tokens=max_tokens,
         thinking_config=types.ThinkingConfig(thinking_budget=config.GEMINI_THINKING_BUDGET),
     )
-    for model_id in ['models/gemini-2.5-flash', 'models/gemini-2.0-flash', 'models/gemini-2.0-flash-lite']:
-        for attempt in range(config.GEMINI_MAX_RETRIES):
-            _rate_gate()
-            try:
-                response = client.models.generate_content(
-                    model=model_id, contents=full_prompt, config=gen_config,
-                )
-                text = (response.text or "").strip()
-                if text:
-                    return text, model_id.split("/", 1)[-1]
-                logger.warning(f"{model_id} returned empty text; trying next tier")
+    n_keys = len(config.GOOGLE_API_KEYS)
+    for ki, key in enumerate(config.GOOGLE_API_KEYS):
+        client = genai.Client(api_key=key)
+        daily_exhausted = False
+        for model_id in ['models/gemini-2.5-flash', 'models/gemini-2.0-flash', 'models/gemini-2.0-flash-lite']:
+            if daily_exhausted:
                 break
-            except Exception as inner_e:
-                transient = _is_transient_gemini_error(inner_e)
-                last = attempt == config.GEMINI_MAX_RETRIES - 1
-                if transient and not last:
-                    delay = config.GEMINI_RETRY_BASE_DELAY * (2 ** attempt) + random.uniform(0, 1)
-                    logger.warning(
-                        f"{model_id} transient failure (attempt {attempt+1}/"
-                        f"{config.GEMINI_MAX_RETRIES}): {inner_e}. Retrying in {delay:.1f}s"
+            for attempt in range(config.GEMINI_MAX_RETRIES):
+                _rate_gate()
+                try:
+                    response = client.models.generate_content(
+                        model=model_id, contents=full_prompt, config=gen_config,
                     )
-                    time.sleep(delay)
-                    continue
-                logger.warning(f"{model_id} failed (attempt {attempt+1}): {inner_e}")
-                break
+                    text = (response.text or "").strip()
+                    if text:
+                        return text, model_id.split("/", 1)[-1]
+                    logger.warning(f"{model_id} returned empty text; trying next tier")
+                    break
+                except Exception as inner_e:
+                    s = str(inner_e).lower()
+                    if "perday" in s or "requestsperdayper" in s:
+                        # This project's daily quota is gone — rotate to the next project key.
+                        logger.warning(
+                            f"Gemini key#{ki+1}/{n_keys} daily quota exhausted; rotating to next project."
+                        )
+                        daily_exhausted = True
+                        break
+                    transient = _is_transient_gemini_error(inner_e)
+                    last = attempt == config.GEMINI_MAX_RETRIES - 1
+                    if transient and not last:
+                        delay = config.GEMINI_RETRY_BASE_DELAY * (2 ** attempt) + random.uniform(0, 1)
+                        logger.warning(
+                            f"{model_id} transient failure (attempt {attempt+1}/"
+                            f"{config.GEMINI_MAX_RETRIES}): {inner_e}. Retrying in {delay:.1f}s"
+                        )
+                        time.sleep(delay)
+                        continue
+                    logger.warning(f"{model_id} failed (attempt {attempt+1}): {inner_e}")
+                    break
     return None
 
 
@@ -287,27 +325,16 @@ def call_llm(
 
     t0 = time.time()
 
-    # Build the ordered provider chain. The configured primary is tried first (rotating
-    # across its key list on rate-limit); Gemini and OpenRouter remain as backups.
-    if config.LLM_PROVIDER == "xai" and config.XAI_API_KEYS:
+    # OpenAI-compatible providers: configured primary first, then backups (groq → cerebras
+    # → xAI), each rotating across its own key list on rate-limit/quota.
+    for base_url, keys, model, label in _oai_provider_chain(feature):
         text = _try_openai_chat(
-            config.XAI_BASE_URL, config.XAI_API_KEYS, config.XAI_MODEL,
-            prompt, system_msg, temp, max_tokens, "xAI-Grok",
+            base_url, keys, model, prompt, system_msg, temp, max_tokens, label,
         )
         if text:
-            return text, time.time() - t0, config.XAI_MODEL
+            return text, time.time() - t0, model
 
-    if config.LLM_PROVIDER == "groq" and config.GROQ_API_KEYS:
-        # Per-feature routing: defense/weakness -> strong model, others -> default.
-        groq_model = config.MODEL_BY_FEATURE.get(feature, config.GROQ_MODEL)
-        text = _try_openai_chat(
-            config.GROQ_BASE_URL, config.GROQ_API_KEYS, groq_model,
-            prompt, system_msg, temp, max_tokens, "Groq",
-        )
-        if text:
-            return text, time.time() - t0, groq_model
-
-    # Gemini (primary when LLM_PROVIDER=="gemini", else backup).
+    # Gemini (multi-project key rotation on daily-quota exhaustion).
     gemini_res = _try_gemini(prompt, system_msg, temp, max_tokens)
     if gemini_res:
         text, model = gemini_res
@@ -374,17 +401,14 @@ async def async_stream_llm(
         messages.append({"role": "system", "content": system_msg})
     messages.append({"role": "user", "content": prompt})
 
-    # Ordered streaming attempts: (base_url, keys, model, label).
-    attempts = []
-    if config.LLM_PROVIDER == "xai" and config.XAI_API_KEYS:
-        attempts.append((config.XAI_BASE_URL, config.XAI_API_KEYS, model or config.XAI_MODEL, "xAI"))
-    elif config.LLM_PROVIDER == "groq" and config.GROQ_API_KEYS:
-        attempts.append((
-            config.GROQ_BASE_URL, config.GROQ_API_KEYS,
-            model or config.MODEL_BY_FEATURE.get(feature, config.GROQ_MODEL), "Groq",
-        ))
+    # Streaming attempts mirror the sync chain (primary → groq/cerebras/xai), then
+    # OpenRouter. A `model` override, if given, applies to every attempt.
+    attempts = [
+        (base_url, keys, (model or chain_model), label)
+        for (base_url, keys, chain_model, label) in _oai_provider_chain(feature)
+    ]
     if config.OPENROUTER_API_KEYS:
-        attempts.append((config.OPENROUTER_BASE_URL, config.OPENROUTER_API_KEYS, config.LLM_MODEL, "OpenRouter"))
+        attempts.append((config.OPENROUTER_BASE_URL, config.OPENROUTER_API_KEYS, model or config.LLM_MODEL, "OpenRouter"))
 
     for base_url, keys, stream_model, label in attempts:
         for ki, key in enumerate(keys):
