@@ -1,11 +1,86 @@
 # Conan — Backend API Contract (post-v8)
 
 **Service:** Legal AI Assistant for Egyptian Criminal Law
-**Base URL:** `http://localhost:8000/api/v1` (dev) — production base set by the deployment team
+**Base URL:** `http://localhost:8000/api/v1` locally, or the Cloudflare tunnel URL when integrating remotely — **see the "Connecting to the API" section below for the exact URL, the tunnel, CORS, encoding, and timeouts. Read that first.**
 **Auth:** None at the moment. CORS is permissive (`*`). Lock down in production.
-**Response language:** Modern Standard Arabic in user-facing fields; English in keys.
-**OpenAPI spec:** live at `GET /docs` (Swagger UI) and `GET /openapi.json`.
-**Last updated:** 2026-05-29 (branch `llm-reliability-expert-rules`, tip `0c927a3`) — system renamed Nour → Conan; LLM reliability + multi-provider + answer-cache + confidence-recalibration series. See §13 for the full changelog. Verify any deployment with `python legal-ai-assistant/scripts/contract_selftest.py --full`.
+**Response language:** Modern Standard Arabic in user-facing fields; English in keys. All payloads are UTF-8.
+**OpenAPI spec:** live at `GET /docs` (Swagger UI) and `GET /openapi.json` (works through the tunnel too).
+**Last updated:** 2026-05-30 (branch `llm-reliability-expert-rules`, tip `62122e2`) — system renamed Nour → Conan; LLM reliability + multi-provider + big-context routing + answer-cache + confidence-recalibration series. See §13 for the full changelog. Verify any deployment with `python legal-ai-assistant/scripts/contract_selftest.py --full`.
+
+---
+
+## Connecting to the API (base URL, Cloudflare tunnel, CORS, timeouts) — READ FIRST
+
+Everything you need to reach the service. There is **no extra setup, key, or coordination required on your side** beyond what is written here.
+
+### How to reach the service
+
+There are two base URLs. Append every path in this document (which already starts with `/api/v1`) to whichever base you are using.
+
+| Environment | Base URL | When |
+|---|---|---|
+| **Local** (same machine as the backend) | `http://localhost:8000` | You run the backend yourself. |
+| **Remote (Cloudflare tunnel)** | `https://<something>.trycloudflare.com` | The normal case: the backend runs on the team's laptop and is exposed to you over a Cloudflare tunnel. |
+
+So a full request URL is, e.g.:
+`https://<something>.trycloudflare.com/api/v1/qa`  →  `POST` with the JSON body from §3.1.
+
+### The Cloudflare tunnel — full detail
+
+The backend is hosted on a laptop and made publicly reachable with a **Cloudflare Quick Tunnel**. The operator starts it with:
+
+```bash
+# on the backend machine, with the API already running on :8000
+cloudflared tunnel --url http://localhost:8000
+```
+
+`cloudflared` then prints a line like:
+
+```
++--------------------------------------------------------------------------------------------+
+|  Your quick Tunnel has been created! Visit it at (it may take some time to be reachable):  |
+|  https://random-words-1234.trycloudflare.com                                               |
++--------------------------------------------------------------------------------------------+
+```
+
+That `https://....trycloudflare.com` address **is the base URL** for everything in this document.
+
+**The single most important fact:** a *Quick* Tunnel URL is **ephemeral** — it is regenerated every time `cloudflared` (or the laptop) restarts. **Do not hard-code it.** Put it in a config value / environment variable on your side (e.g. `Conan:BaseUrl`) so it can be updated in one place. The current live URL is shared out-of-band (chat/message) whenever the tunnel is (re)started; if requests suddenly fail with connection errors, the URL has almost certainly rotated — ask for the new one (or check the agreed shared location) and update your config.
+
+> If you need a URL that does **not** change, the operator can switch to a *named* Cloudflare tunnel (`cloudflared tunnel create conan` + a DNS route) which yields a stable `https://conan.<domain>` address. Ask for this if the rotating Quick-Tunnel URL is disruptive. Either way the **paths, payloads, and behaviour in this document are identical** — only the host part of the base URL differs.
+
+### What the tunnel gives you for free
+
+- **HTTPS/TLS** — the `trycloudflare.com` URL is HTTPS, terminated by Cloudflare. Your .NET `HttpClient` gets TLS automatically; no certificate handling needed.
+- **CORS** — the API sends `Access-Control-Allow-Origin: *`, so browser/Blazor/WASM clients can call it cross-origin without a proxy. (This is for integration only; lock it down before public production.)
+- **No auth headers** — there is no API key or token today. Just call the endpoints. (When auth is added it will be documented here first and rolled out without breaking the existing shapes.)
+
+### Client requirements (non-negotiable to avoid the common failures)
+
+1. **HTTP timeout ≥ 120 s.** Retrieval + reranking run on **CPU** (~16–26 s per request, longer for memos). A default `HttpClient` 100 s timeout *will* intermittently fail; set `HttpClient.Timeout = TimeSpan.FromSeconds(180)`. The tunnel itself adds only a few ms. **This is the #1 integration mistake.**
+2. **UTF-8 everywhere.** Requests and responses are UTF-8 Arabic. Send `Content-Type: application/json; charset=utf-8` and read responses as UTF-8. Do not let the client default to Latin-1.
+3. **Echo `session_id`** for chat (see §0 / §4): omit on turn 1, read it from the response, send it back on every later turn.
+4. **Handle `503`** (all LLM providers momentarily exhausted) and **connection errors** (tunnel URL rotated / laptop asleep) gracefully — show the Arabic message, allow retry.
+5. **The laptop must be awake** for the tunnel to work. If it sleeps, requests fail until the backend + tunnel are back up (and the URL may change).
+
+### Smoke test (do this first, before wiring up the client)
+
+```bash
+# replace with the current tunnel URL (or http://localhost:8000 locally)
+BASE="https://<something>.trycloudflare.com"
+
+# 1) Liveness — no LLM, instant. Expect {"status":"ok", ...}
+curl -s "$BASE/api/v1/health"
+
+# 2) A real grounded answer (UTF-8 Arabic). Use a long timeout.
+curl -s --max-time 180 -X POST "$BASE/api/v1/qa" \
+  -H 'Content-Type: application/json; charset=utf-8' \
+  -d '{"question":"ما هي عقوبة السرقة بالإكراه؟"}'
+```
+
+If `/health` returns `200` but `/qa` returns `503`, the service is up and the LLM tier is momentarily out of budget — retry shortly; it is not an integration error on your side.
+
+---
 
 This document supersedes `legal-ai-assistant/api_contract.md` (pre-v8) and reflects every endpoint added or modified during the v3 → v8 accuracy work plus the document-upload + iterative-retrieval rollouts.
 
