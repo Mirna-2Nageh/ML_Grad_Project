@@ -37,6 +37,78 @@ CONTROL_PROTOCOL = (
     "  'عذراً، هذه المعلومة غير متوفرة في قاعدة البيانات الحالية. يرجى توجيه السؤال بشكل أكثر دقة أو مراجعة الجهة المختصة.'"
 )
 
+# Senior-lawyer defense-reasoning heuristics applied to weakness/defense/forensic analysis.
+# These are PROCEDURES (compare timestamps, compare identifiers, trace custody, match intent to
+# profession) — the high-value nullity/intent points a professional Egyptian criminal defense
+# lawyer never misses. Each is raised ONLY when the case facts actually support it; never fabricated.
+PROCEDURAL_DEFENSE_CHECKLIST = (
+    "PROCEDURAL DEFENSE CHECKLIST (apply systematically to EVERY criminal case; raise a point only when "
+    "the facts genuinely support it — never invent one, and state explicitly when the file lacks the "
+    "detail needed to assess it):\n"
+    "A. TIMELINE vs. PROSECUTION WARRANT — بطلان القبض والتفتيش السابق على إذن النيابة:\n"
+    "   - Compare the EXACT time of the arrest/search/seizure against the EXACT time the prosecution "
+    "     warrant (إذن النيابة العامة) was issued. If the seizure occurred BEFORE the warrant — even by "
+    "     minutes — raise 'بطلان القبض والتفتيش لحصولهما قبل صدور إذن النيابة العامة' and apply 'ما بُني "
+    "     على باطل فهو باطل' (every procedure built on the void arrest is itself void). This is usually "
+    "     the STRONGEST defense in the case — lead with it.\n"
+    "   - Read clock times precisely: 'الساعة 12:00 صباحاً' / 'منتصف الليل' marks the START of that "
+    "     calendar day, so it is EARLIER than acts later the same day. An event stated as happening "
+    "     'صباحاً' on a date PRECEDES a warrant issued on the EVENING of that same date — do NOT silently "
+    "     assume the morning event came afterward. Compute the actual gap before concluding.\n"
+    "B. IDENTIFIER MISMATCH — بطلان تفتيش/ضبط ما لم يشمله الإذن:\n"
+    "   - Compare EVERY identifier in the warrant (vehicle/motorcycle plate numbers, names, national IDs, "
+    "     addresses, descriptions) against the matching identifier in the seizure record (محضر الضبط). "
+    "     Any discrepancy (e.g., the warrant authorizes plate 'ط ج ى 21126' but the seized vehicle is "
+    "     'ط ج ى 2836') means that item was searched/seized OUTSIDE the warrant → 'بطلان تفتيش/ضبط ذلك "
+    "     الشيء لعدم شموله بإذن النيابة الصحيح'. A mismatch in names/identifiers may also evidence خطأ "
+    "     مادي جسيم or تلفيق.\n"
+    "C. TERRITORIAL JURISDICTION — apply correctly, do NOT over-claim (نطاق الاختصاص المكاني للإذن):\n"
+    "   - A warrant to arrest the suspect 'حال تردده على دائرة القسم' covers ANY location WITHIN that "
+    "     police precinct's territorial jurisdiction. Do NOT argue a place is 'outside the warrant' merely "
+    "     because it was not named in advance, as long as it lies inside the precinct's area. "
+    "     Pre-identifying the location through a confidential source (مصدر سري) does NOT invalidate the "
+    "     warrant — it shows seriousness of execution. Raise spatial excess ONLY when the seizure clearly "
+    "     occurred OUTSIDE the precinct's jurisdiction.\n"
+    "D. CHAIN OF CUSTODY / SEALING — سلامة التحريز:\n"
+    "   - Identify who performed the arrest/search and WROTE the seizure record versus who SEALED/STAMPED "
+    "     the seized items (بصمة خاتم الأحراز). If the seal bears a different officer's name (e.g., أمين "
+    "     شرطة) whose role is not explained in the record, raise 'التراخي في التحريز / احتمال اختلاط "
+    "     الأحراز / بطلان لعدم قيام محرر المحضر بالتحريز بنفسه'.\n"
+    "E. INTENT FROM PROFESSION & SEIZED CASH — انتفاء قصد الاتجار:\n"
+    "   - Compare the defendant's stated profession (e.g., delivery worker / دليفري) and the nature of any "
+    "     seized money (small/mixed denominations, a work float 'عهدة' or daily revenue 'إيراد يومي') "
+    "     against the prosecution's claim that the cash is trafficking proceeds. A lawful alternative "
+    "     explanation for the money undermines قصد الاتجار and the moral element; argue re-characterization "
+    "     to mere possession / حيازة-إحراز بغير قصد الاتجار where the facts fit."
+)
+
+# One fully-worked, FICTIONAL example proving how each checklist point (A–E) is reasoned and phrased.
+# It is grounding-safe BY DESIGN: it names defense DOCTRINES, never an 'المادة N' article number, so the
+# model cannot learn to emit an ungrounded citation that the evidence validator would flag. It is also
+# output-format-agnostic — the model folds the relevant points into weakness/defense/forensic structure.
+WORKED_EXAMPLE = (
+    "WORKED EXAMPLE — illustrative template (the facts are FICTIONAL placeholders; do NOT treat them as the "
+    "current case and do NOT copy its numbers). It proves how each checklist point is reasoned and phrased; "
+    "fold the relevant points into whatever output structure your task requires:\n"
+    "وقائع مفترضة: صدر إذن النيابة الساعة 10:00 مساءً يوم 3/4 لضبط وتفتيش المتهم وسيارته رقم (ق ر س 4471) "
+    "حال تردده على دائرة القسم. يقرّر المتهم أن الضبط تمّ الساعة 9:00 صباحاً من اليوم نفسه. ورد بمحضر الضبط "
+    "أن السيارة المضبوطة رقمها (ق ر س 1447). حُرّر المحضر بمعرفة الرائد/ (أ)، وبُصمت الأحراز بخاتم أمين "
+    "شرطة/ (ب) دون بيان دوره. المتهم يعمل سائق أجرة، وضُبط معه مبلغ من فئات صغيرة متفرقة قيل إنه حصيلة اتجار.\n"
+    "التطبيق النموذجي للقائمة:\n"
+    "(أ) بطلان القبض والتفتيش لسبقهما على الإذن: الضبط صباحاً (9:00 ص) سابقٌ على صدور الإذن مساءً (10:00 م) "
+    "بفارق نحو ثلاث عشرة ساعة؛ فيبطل القبض والتفتيش وكل إجراء تلاهما عملاً بقاعدة (ما بُني على باطل فهو "
+    "باطل)، ويُتصدَّر به الدفاع لأنه الأقوى.\n"
+    "(ب) بطلان تفتيش السيارة لاختلاف رقمها: الإذن صدر للوحة (ق ر س 4471) بينما المضبوط (ق ر س 1447)، فوقع "
+    "التفتيش على شيء لم يشمله الإذن، مع ما يثيره الاختلاف من شبهة خطأ مادي جسيم أو تلفيق.\n"
+    "(ج) الاختصاص المكاني — تطبيق صحيح بلا مغالاة: لا يصحّ الدفع بتجاوز المكان ما دام الضبط تمّ داخل دائرة "
+    "القسم، وتحديد المكان مسبقاً عبر مصدر سري لا يبطل الإذن بل يؤكد جدية التنفيذ.\n"
+    "(د) سلامة التحريز: محرّر المحضر (الرائد) غير صاحب البصمة على الأحراز (أمين الشرطة) الذي لم يُبيَّن دوره، "
+    "مما يفتح باب التراخي في التحريز واحتمال اختلاط الأحراز أو بطلانه لعدم قيام محرّر المحضر بالتحريز بنفسه.\n"
+    "(هـ) انتفاء قصد الاتجار: المتهم سائق أجرة، وفئات المال الصغيرة المتفرقة تتسق مع إيراد العمل اليومي لا "
+    "مع حصيلة بيع، فينهدم الركن المعنوي ويُطلب إعادة التكييف إلى إحراز/حيازة بغير قصد الاتجار.\n"
+    "نهاية المثال."
+)
+
 SYSTEM_MESSAGES = {
     "qa": (
         f"{IDENTITY_PROTOCOL}\n\n"
@@ -110,6 +182,8 @@ SYSTEM_MESSAGES = {
         "- If the facts are insufficient to assess a dimension, say so explicitly — do NOT invent a weakness.\n"
         "- If a dimension genuinely has no weakness, state that honestly rather than padding.\n"
         "- Address multiple charges or defendants separately.\n"
+        f"{PROCEDURAL_DEFENSE_CHECKLIST}\n"
+        f"{WORKED_EXAMPLE}\n"
         "LANGUAGE: Modern Standard Arabic only."
     ),
     "defense": (
@@ -150,6 +224,8 @@ SYSTEM_MESSAGES = {
         "- If the facts indicate clear culpability with no legal defense in the provided texts, argue in good faith for "
         "mitigation or procedural points only; never fabricate exculpatory facts.\n"
         "- Address multiple charges or defendants separately.\n"
+        f"{PROCEDURAL_DEFENSE_CHECKLIST}\n"
+        f"{WORKED_EXAMPLE}\n"
         "LANGUAGE: formal Modern Standard Arabic legal register only."
     ),
     "forensic": (
@@ -174,6 +250,8 @@ SYSTEM_MESSAGES = {
         "EDGE CASES:\n"
         "- If a dimension cannot be assessed from the provided material, say so explicitly — do NOT fabricate a finding.\n"
         "- If there are genuinely no inconsistencies, state that honestly (CONFLICT: NO).\n"
+        f"{PROCEDURAL_DEFENSE_CHECKLIST}\n"
+        f"{WORKED_EXAMPLE}\n"
         "LANGUAGE: the analysis is Modern Standard Arabic; only the first CONFLICT marker is in English."
     ),
     "verify_memo": (
@@ -245,6 +323,11 @@ PROMPTS = {
         "If the facts describe more than one offense, enumerate the distinct charges first, then analyze each charge "
         "separately. Match every cited article to the elements actually present in the facts (e.g., do not cite م240 "
         "unless the injury is a permanent impairment).\n"
+        "Apply the PROCEDURAL DEFENSE CHECKLIST from your instructions: compare the arrest/search time against the "
+        "time إذن النيابة was issued (a search BEFORE the warrant = بطلان القبض والتفتيش وما بُني عليه); compare every "
+        "identifier in the warrant vs. the seizure record (plate numbers, names, IDs) — any mismatch = بطلان ضبط ذلك "
+        "الشيء; trace who sealed the أحراز vs. who wrote the محضر; weigh the defendant's profession against any seized "
+        "cash to test قصد الاتجار; and do NOT over-claim المكاني jurisdiction for a location inside the precinct.\n"
         "Produce a numbered analysis across: (1) أوجه القصور الإجرائية، (2) ضعف الأدلة (discuss each evidence item "
         "explicitly), (3) نقص أركان الجريمة (per charge), (4) الظروف المخففة أو المبيحة (engage with each defense the "
         "defendant raised). Tie each point to a specific fact, evidence item, or article number.\n\n"
@@ -268,6 +351,12 @@ PROMPTS = {
         "defense, and explicitly discuss every evidence item and every defense the defendant raised.\n"
         "4. 'الطلبات' must address each charge separately (e.g., acquittal on one charge, re-characterization of "
         "another, contesting elements of a third).\n"
+        "5. In 'أوجه الدفاع', run the PROCEDURAL DEFENSE CHECKLIST from your instructions and raise every point the "
+        "facts support — lead with بطلان القبض والتفتيش if the search preceded إذن النيابة (ما بُني على باطل فهو "
+        "باطل); flag any identifier mismatch between the warrant and the seizure record (plate numbers, names, IDs); "
+        "challenge التحريز if the seal-holder differs from the محضر writer; and argue انتفاء قصد الاتجار from the "
+        "defendant's profession vs. the seized cash where the facts fit. Do NOT over-claim المكاني jurisdiction for a "
+        "location inside the precinct.\n"
         "If facts/evidence are insufficient on a point, state what is missing rather than fabricating.\n\n"
         "مذكرة الدفاع:"
     ),
@@ -300,7 +389,11 @@ PROMPTS = {
         "Additional Evidence (medical records, testimony, forensic reports, etc.):\n{evidence}\n\n"
         "Output 'CONFLICT: YES' or 'CONFLICT: NO' on the first line, then a numbered Arabic analysis across: "
         "(1) التناقضات الداخلية في الوقائع، (2) تعارض الأدلة مع الوقائع، (3) مدى توافر الأركان القانونية، "
-        "(4) الثغرات والنواقص. Tie each finding to a fact, an evidence item, or an article number.\n\n"
+        "(4) الثغرات والنواقص. Tie each finding to a fact, an evidence item, or an article number.\n"
+        "Run the PROCEDURAL DEFENSE CHECKLIST from your instructions while doing so: precisely compare the "
+        "arrest/search time vs. the time إذن النيابة was issued (treat '12:00 صباحاً' as the START of the day); "
+        "compare every identifier in the warrant vs. the seizure record; and trace who sealed the أحراز vs. who "
+        "wrote the محضر. Any of these that fails is a CONFLICT.\n\n"
         "التحليل:"
     ),
     "verify_memo": (
