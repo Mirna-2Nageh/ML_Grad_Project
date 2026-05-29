@@ -10,6 +10,43 @@ This document supersedes `legal-ai-assistant/api_contract.md` (pre-v8) and refle
 
 ---
 
+## 0. Integration stability — what is frozen vs. what changes under the hood
+
+**You can integrate now.** The integration surface is the **JSON shape** in this document —
+endpoint paths, field **names**, and field **types**. That is frozen; we will only add
+fields, never rename or remove them.
+
+**These change between versions and are NOT part of the contract — treat them as dynamic
+data, never hard-code, assert, or branch on exact values:**
+- `model` (which LLM answered — may be groq / cerebras / gemini depending on fallback)
+- `confidence_score` and `confidence_factors` (recalibrated over time)
+- `answer` / `analysis` / `memorandum` **text**, `sources[]` (filenames, articles, scores)
+- `latency_ms`, `warnings[]` contents
+
+So our planned upgrades — **index rebuild (bge-m3), confidence recalibration, new LLM
+providers, answer caching** — require **zero code changes on your side**. Your client keeps
+working automatically. The only coordination needed: after we swap in a rebuilt index we
+restart the service and clear the answer cache, and you should re-run your golden-path
+checks because the *values* above will shift (the *shapes* won't).
+
+**To integrate cleanly, your client MUST:**
+1. **Echo `session_id`** — omit it on turn 1, read it from the response, send it back on
+   every later turn. (Do not assume a shared `"default"` session; that changed.)
+2. **Use a long HTTP timeout — ≥ 120 s.** Retrieval+rerank run on CPU (~16–26 s/request,
+   more for memos). A default 30 s timeout will fail. This is the #1 integration gotcha.
+3. **Handle `503`** gracefully — it carries an Arabic "try again later" message and means
+   every LLM provider was momentarily unavailable (free-tier budget). Show it, allow retry.
+4. **Drive the UI off structured fields** — render the `warnings[]` array and
+   `confidence_score`; do **not** parse the Arabic `answer` text or apply your own
+   confidence thresholds (the server already decides when to warn).
+5. **Stream** (`/chat/stream`): use an SSE client; the final `done:true` event carries
+   confidence/sources/warnings; an error arrives as `{"error": "...", "done": true}`.
+
+**Production (before exposing beyond localhost):** add auth and restrict CORS (currently
+`*`); put the FastAPI service behind your backend/gateway rather than exposing it directly.
+
+---
+
 ## 1. Conventions (read this first)
 
 ### 1.1 The standard answer envelope
@@ -192,7 +229,12 @@ Multi-turn dialogue with sliding-window compaction and disk persistence. Session
 ```jsonc
 {
   "message": "ما عقوبة السرقة بالإكراه؟",
-  "session_id": "user-123",            // default "default"
+  "session_id": "user-123",            // OPTIONAL. Omit on the FIRST turn → the server
+                                       //   generates a fresh UUID and returns it in the
+                                       //   response. Read it there and echo it back on
+                                       //   every later turn to keep the conversation.
+                                       //   (Older builds defaulted to a shared "default"
+                                       //   session — do NOT rely on that anymore.)
   "k": 7                                // 1–20, default 7
 }
 ```
