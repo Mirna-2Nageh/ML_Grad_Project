@@ -119,9 +119,9 @@ TEMPERATURES = {
 # ──────────────────────────────────────────────
 # Retrieval Parameters
 # ──────────────────────────────────────────────
-RETRIEVAL_K = 7          # Final docs returned
-RETRIEVAL_K_DENSE = 30   # FAISS candidates
-RETRIEVAL_K_SPARSE = 30  # BM25 candidates
+RETRIEVAL_K = 10         # Final docs passed to the LLM (broader context; bounded by LLM token budget)
+RETRIEVAL_K_DENSE = 60   # FAISS candidates — wider net over the corpus before rerank (CPU-only, no LLM cost)
+RETRIEVAL_K_SPARSE = 60  # BM25 candidates
 RRF_K = 60               # RRF constant
 
 # ──────────────────────────────────────────────
@@ -149,7 +149,7 @@ NORMALIZE_TA_MARBUTA = False
 # ──────────────────────────────────────────────
 USE_RERANKER = os.getenv("USE_RERANKER", "True").lower() == "true"
 RERANKER_MODEL = os.getenv("RERANKER_MODEL", "BAAI/bge-reranker-v2-m3")
-RETRIEVAL_K_RERANK = int(os.getenv("RETRIEVAL_K_RERANK", "30"))  # candidates fed to reranker (top-N from RRF)
+RETRIEVAL_K_RERANK = int(os.getenv("RETRIEVAL_K_RERANK", "60"))  # candidates fed to reranker (top-N from RRF) — wider = ranks over more of the corpus
 
 # ──────────────────────────────────────────────
 # Confidence Scoring (Phase 1 heuristic)
@@ -214,7 +214,7 @@ def _parse_int_list(env_val: str, fallback) -> list:
     except ValueError:
         return fallback
 ITERATIVE_K_SEQUENCE = _parse_int_list(
-    os.getenv("ITERATIVE_K_SEQUENCE", "7,14,21"), [7, 14, 21]
+    os.getenv("ITERATIVE_K_SEQUENCE", "10,18,28"), [10, 18, 28]
 )
 # Programmatic post-processing of the LLM answer: strip casual openings
 # ("حسناً"، "بالتأكيد"...) and rewrite the leaky template phrase
@@ -260,7 +260,7 @@ BENCHMARK_MODELS = {
 # ──────────────────────────────────────────────
 # Context budget: trimmed so a full request (input + output reservation) fits free-tier
 # token-per-minute caps (e.g. Groq 8B TPM=6000). Expert rules + top chunks still fit.
-MAX_CONTEXT_CHARS = 4500
+MAX_CONTEXT_CHARS = 6000
 MAX_INPUT_CHARS = 50000
 # Output token cap for short-answer features (QA/chat). Answers are typically 200-800 chars,
 # so a 4096 reservation needlessly doubled per-request token cost on free tiers.

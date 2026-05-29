@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 class QARequest(BaseModel):
     """Legal question-answering request."""
     question: str = Field(..., description="Legal question in Arabic", min_length=5, max_length=1000)
-    k: int = Field(default=7, description="Number of context documents to retrieve", ge=1, le=20)
+    k: int = Field(default=10, description="Number of context documents to retrieve", ge=1, le=30)
     prompt_style: str = Field(default="restrictive", description="Prompt style: 'standard' or 'restrictive'")
 
     model_config = {"json_schema_extra": {
@@ -184,7 +184,7 @@ class ChatRequest(BaseModel):
             "keep context. (Previously defaulted to a shared 'default' session.)"
         ),
     )
-    k: int = Field(default=7, description="Number of context documents to retrieve", ge=1, le=20)
+    k: int = Field(default=10, description="Number of context documents to retrieve", ge=1, le=30)
 
     model_config = {"json_schema_extra": {
         "examples": [{"message": "ما عقوبة السرقة بالإكراه؟", "session_id": "user-123"}]

@@ -280,7 +280,7 @@ with tab1:
     )
     col1, col2 = st.columns([3, 1])
     with col2:
-        k_val = st.slider("عدد المراجع", 3, 15, 7, key="qa_k")
+        k_val = st.slider("عدد المراجع", 3, 30, 10, key="qa_k")
 
     # Optional per-question attachment: upload a file OR paste text. When
     # either is given, the request goes to /qa/upload instead of /qa and the
