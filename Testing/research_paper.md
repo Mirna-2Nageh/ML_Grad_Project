@@ -158,6 +158,8 @@ A separate classifier `looks_like_refusal` detects whether the post-processed an
 
 The checklist is paired with a single fully-worked, *fictional* few-shot exemplar demonstrating all five points end-to-end. Crucially, the exemplar is **grounding-safe by construction**: it names defence doctrines (`بطلان القبض والتفتيش`, `انتفاء قصد الاتجار`) but contains *no* `المادة N` article number, so it cannot teach the model to emit an ungrounded citation that the evidence validator (Section 4.3) would flag — raising reasoning coverage while preserving the 0 % hallucinated-citation property. Each checklist item is explicitly conditioned on the facts supporting it ("raise a point only when the facts genuinely support it — never invent one"), so the additions trade no precision for their gain in recall.
 
+A companion **charge-fidelity** rule extends the same precision principle to the offences themselves: the case-analysis endpoints are constrained to enumerate only offences actually charged or described in the case file, and are explicitly forbidden from inventing an uncharged offence (e.g., adding `قيادة بدون رخصة` when the file never mentions a licence). This closes a fabrication mode observed during live validation, where the generator appended a plausible-but-uncharged offence to an otherwise grounded analysis.
+
 ---
 
 ## 5. Document Upload Pipeline

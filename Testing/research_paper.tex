@@ -745,6 +745,15 @@ explicitly conditioned on the facts supporting it (``raise a point only when
 the facts genuinely support it---never invent one''), so the additions
 trade no precision for their gain in recall.
 
+A companion \textbf{charge-fidelity} rule extends the same precision
+principle to the offences themselves: the case-analysis endpoints are
+constrained to enumerate only offences actually charged or described in the
+case file, and are explicitly forbidden from inventing an uncharged offence
+(e.g., adding \ar{قيادة بدون رخصة} when the file never mentions a licence).
+This closes a fabrication mode observed during live validation, where the
+generator appended a plausible-but-uncharged offence to an otherwise
+grounded analysis.
+
 % =============================================================================
 \section{Document Upload Pipeline}\label{sec:upload}
 
