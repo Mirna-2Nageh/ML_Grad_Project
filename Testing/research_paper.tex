@@ -27,17 +27,27 @@
 \usepackage{tikz}
 \usetikzlibrary{positioning,arrows.meta,shapes.geometric,calc,fit,backgrounds}
 
-% --- Arabic support via polyglossia (XeLaTeX) --------------------------------
+% --- Arabic support (XeLaTeX) ------------------------------------------------
 % Compiling with pdfLaTeX will not render Arabic glyphs — use XeLaTeX.
+% NOTE: we deliberately avoid polyglossia/bidi here. The document only contains
+% short inline Arabic snippets (via \ar{...}); polyglossia's \setotherlanguage
+% {arabic} loads the bidi package, which is incompatible with elsarticle's
+% \maketitle and crashes the front matter. Instead we shape inline Arabic with
+% fontspec and obtain correct right-to-left ordering via XeTeX's native
+% TeX--XeT primitives (\TeXXeTstate + \beginR/\endR), which build cleanly under
+% stock XeLaTeX / tectonic / Overleaf.
 \usepackage{fontspec}
-\usepackage{polyglossia}
-\setmainlanguage{english}
-\setotherlanguage{arabic}
 \newfontfamily{\arabicfont}[Script=Arabic]{Amiri}
-\newcommand{\ar}[1]{\textarabic{#1}}
+\TeXXeTstate=1
+\newcommand{\ar}[1]{{\arabicfont\beginR #1\endR}}
 
 % --- Elsevier Procedia front-matter housekeeping -----------------------------
 \journal{Procedia Computer Science}
+
+% \dochead is provided by Elsevier's Procedia author kit (ecrc.sty). Guard it so
+% the manuscript also compiles under stock elsarticle / XeLaTeX / tectonic; the
+% \providecommand is a no-op when the real Procedia style is loaded.
+\providecommand{\dochead}[1]{}
 
 \begin{document}
 
@@ -363,7 +373,7 @@ the 1990s and early 2000s. Modern open-source NLP toolchains cannot reliably
 extract text from this format without LibreOffice-grade office conversion,
 and even after conversion the output typically requires substantial cleaning
 of footnote numbering, page-header artefacts, and OCR-style character
-confusion (\ar{ه}/\ar{ة}, \ar{ي}/\ار{ى}, the four alef forms, and
+confusion (\ar{ه}/\ar{ة}, \ar{ي}/\ar{ى}, the four alef forms, and
 Arabic-Indic vs. Western digits).
 
 \subsection{Manual OCR and cleaning pipeline}
