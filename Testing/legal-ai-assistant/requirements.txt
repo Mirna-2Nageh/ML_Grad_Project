@@ -5,8 +5,13 @@ pydantic==2.9.0
 python-multipart==0.0.9
 python-dotenv==1.0.1
 
-# === LLM Client (OpenRouter — OpenAI-compatible) ===
+# === LLM Clients ===
+# openai: OpenAI-compatible SDK shared by Groq / Cerebras / xAI / OpenRouter.
 openai==1.51.0
+# google-genai: native Gemini SDK — Gemini is part of the provider fallback chain.
+google-genai==1.74.0
+# httpx: used directly by scripts/contract_selftest.py (also an openai dependency).
+httpx>=0.27.0
 
 # === Embeddings & Vector Store ===
 sentence-transformers==2.7.0

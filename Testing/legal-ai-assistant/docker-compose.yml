@@ -1,0 +1,23 @@
+# Conan RAG API — one-command run.
+#   docker compose up -d --build
+# Requires, in this directory:
+#   - .env            (your API keys: GROQ / CEREBRAS / GOOGLE / OPENROUTER ...)
+#   - data/           (the prebuilt index — server refuses to start without it)
+services:
+  conan:
+    build: .
+    image: conan-legal-rag:latest
+    container_name: conan
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data                       # REQUIRED: prebuilt index (read/write for sessions+cache)
+      - hf_cache:/root/.cache/huggingface      # persist the ~2.7GB models across restarts
+    restart: unless-stopped
+    # Conan needs ~6-8GB RAM with the reranker (~3-4GB if USE_RERANKER=False in .env).
+    # mem_limit: 8g
+
+volumes:
+  hf_cache:

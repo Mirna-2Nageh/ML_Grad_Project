@@ -1,0 +1,39 @@
+# Keep the build context tiny and the image code-only.
+# Without this, Docker would try to send the 5.8GB venv + 0.7GB index as build context.
+
+# Committed in-tree virtualenv (5.8GB) — never goes in the image
+LaW/
+
+# Runtime data: the index + sessions + cache are MOUNTED at runtime, not baked in
+data/
+data.legacy/
+
+# Secrets — provided at runtime via --env-file, never in the image
+.env
+.env.*
+!.env.example
+
+# Python caches / bytecode
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+
+# Logs, scratch, notebooks, eval artifacts
+*.log
+out*.txt
+*.ipynb
+scripts/eval_runs/
+evaluation/
+
+# Ad-hoc smoke scripts (not needed to serve)
+test_*.py
+list_models.py
+inspect_chunks.py
+
+# VCS / tooling
+.git/
+.gitignore
+.dockerignore
+Dockerfile
+docker-compose.yml
