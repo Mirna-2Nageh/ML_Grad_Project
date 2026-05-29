@@ -58,6 +58,17 @@ CEREBRAS_API_KEYS = _key_list("CEREBRAS_API_KEY", "CEREBRAS_API_KEYS")
 CEREBRAS_API_KEY = CEREBRAS_API_KEYS[0] if CEREBRAS_API_KEYS else ""  # back-compat
 CEREBRAS_BASE_URL = os.getenv("CEREBRAS_BASE_URL", "https://api.cerebras.ai/v1")
 CEREBRAS_MODEL = os.getenv("CEREBRAS_MODEL", "llama-3.3-70b")  # verify exact id at cloud.cerebras.ai
+
+# Route oversized prompts (big case files) past providers that can't serve them in one
+# request — a rough char proxy for tokens — straight to a large-context provider (Gemini),
+# instead of wasting attempts on a guaranteed 413/over-context error. 0 = no limit.
+# Keyed by the provider label used in the chain.
+PROVIDER_MAX_PROMPT_CHARS = {
+    "Groq":       int(os.getenv("GROQ_MAX_PROMPT_CHARS", "26000")),        # ~12k tokens/min cap
+    "Cerebras":   int(os.getenv("CEREBRAS_MAX_PROMPT_CHARS", "16000")),    # ~8k-token context window
+    "xAI":        int(os.getenv("XAI_MAX_PROMPT_CHARS", "26000")),
+    "OpenRouter": int(os.getenv("OPENROUTER_MAX_PROMPT_CHARS", "80000")),
+}  # Gemini intentionally has no cap — its large context is the home for big documents.
 # Per-feature model routing: heavy reasoning (defense memo, weakness analysis) gets the
 # strong model; high-volume QA/chat can use a cheaper/faster one. Falls back to GROQ_MODEL.
 GROQ_MODEL_STRONG = os.getenv("GROQ_MODEL_STRONG", "llama-3.3-70b-versatile")

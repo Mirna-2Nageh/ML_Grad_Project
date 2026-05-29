@@ -324,24 +324,39 @@ def call_llm(
     )
 
     t0 = time.time()
+    req_chars = len(prompt) + len(system_msg or "")
+
+    def _too_big(label: str) -> bool:
+        lim = config.PROVIDER_MAX_PROMPT_CHARS.get(label, 0)
+        if lim and req_chars > lim:
+            logger.info(
+                f"Skipping {label}: prompt {req_chars} chars exceeds its {lim}-char request "
+                f"budget — routing to a larger-context provider."
+            )
+            return True
+        return False
 
     # OpenAI-compatible providers: configured primary first, then backups (groq → cerebras
-    # → xAI), each rotating across its own key list on rate-limit/quota.
+    # → xAI), each rotating across its own key list on rate-limit/quota. Oversized prompts
+    # (big case files) skip providers that can't serve them and fall through to Gemini.
     for base_url, keys, model, label in _oai_provider_chain(feature):
+        if _too_big(label):
+            continue
         text = _try_openai_chat(
             base_url, keys, model, prompt, system_msg, temp, max_tokens, label,
         )
         if text:
             return text, time.time() - t0, model
 
-    # Gemini (multi-project key rotation on daily-quota exhaustion).
+    # Gemini (multi-project key rotation on daily-quota exhaustion). Large context window —
+    # the natural home for big documents, so it's never size-skipped.
     gemini_res = _try_gemini(prompt, system_msg, temp, max_tokens)
     if gemini_res:
         text, model = gemini_res
         return text, time.time() - t0, model
 
     # OpenRouter (last-resort backup).
-    if config.OPENROUTER_API_KEYS:
+    if config.OPENROUTER_API_KEYS and not _too_big("OpenRouter"):
         text = _try_openai_chat(
             config.OPENROUTER_BASE_URL, config.OPENROUTER_API_KEYS, config.LLM_MODEL,
             prompt, system_msg, temp, max_tokens, "OpenRouter",

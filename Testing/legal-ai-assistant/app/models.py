@@ -23,7 +23,7 @@ class QARequest(BaseModel):
 
 class SummarizeRequest(BaseModel):
     """Legal text summarization request."""
-    text: str = Field(..., description="Legal text to summarize in Arabic", min_length=50, max_length=15000)
+    text: str = Field(..., description="Legal text to summarize in Arabic", min_length=50, max_length=50000)
 
     model_config = {"json_schema_extra": {
         "examples": [{"text": "المادة الأولى: يعاقب بالحبس كل من ارتكب جريمة السرقة..."}]
@@ -32,8 +32,8 @@ class SummarizeRequest(BaseModel):
 
 class WeaknessRequest(BaseModel):
     """Case weakness detection request."""
-    case_facts: str = Field(..., description="Case facts text in Arabic", min_length=20, max_length=10000)
-    evidence: str = Field(default="", description="Evidence items (cameras, medical reports, witness statements, prior history). Each will be analyzed explicitly.", max_length=15000)
+    case_facts: str = Field(..., description="Case facts text in Arabic", min_length=20, max_length=50000)
+    evidence: str = Field(default="", description="Evidence items (cameras, medical reports, witness statements, prior history). Each will be analyzed explicitly.", max_length=30000)
     defendant_statement: str = Field(default="", description="The defendant's own narrative / defenses raised (e.g., self-defense, mutual assault, denial)", max_length=5000)
 
     model_config = {"json_schema_extra": {
@@ -43,9 +43,9 @@ class WeaknessRequest(BaseModel):
 
 class DefenseRequest(BaseModel):
     """Defense memorandum generation request."""
-    case_facts: str = Field(..., description="Case facts in Arabic", min_length=20, max_length=10000)
+    case_facts: str = Field(..., description="Case facts in Arabic", min_length=20, max_length=50000)
     weaknesses: str = Field(default="", description="Previously identified weaknesses (optional)", max_length=5000)
-    evidence: str = Field(default="", description="Evidence items (cameras, medical reports, witness statements, prior history). Each will be analyzed explicitly.", max_length=15000)
+    evidence: str = Field(default="", description="Evidence items (cameras, medical reports, witness statements, prior history). Each will be analyzed explicitly.", max_length=30000)
     defendant_statement: str = Field(default="", description="The defendant's own narrative / defenses raised (e.g., self-defense, mutual assault, denial)", max_length=5000)
 
     model_config = {"json_schema_extra": {
@@ -55,8 +55,8 @@ class DefenseRequest(BaseModel):
 
 class ForensicRequest(BaseModel):
     """Forensic-consistency analysis request: cross-references facts + evidence against the law."""
-    case_facts: str = Field(..., description="Case facts / incident or police report (Arabic)", min_length=20, max_length=10000)
-    evidence: str = Field(default="", description="Additional evidence text (medical records, testimony, forensic reports). Will be sourced from the per-case evidence store once uploads land.", max_length=15000)
+    case_facts: str = Field(..., description="Case facts / incident or police report (Arabic)", min_length=20, max_length=50000)
+    evidence: str = Field(default="", description="Additional evidence text (medical records, testimony, forensic reports). Will be sourced from the per-case evidence store once uploads land.", max_length=30000)
 
     model_config = {"json_schema_extra": {
         "examples": [{"case_facts": "ضُبط المتهم ليلاً وبحوزته سلاح.", "evidence": "التقرير الطبي: لا توجد إصابات على المجني عليه."}]
