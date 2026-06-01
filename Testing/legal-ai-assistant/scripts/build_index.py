@@ -36,6 +36,7 @@ from app.services.preprocessing import (
 )
 from app.services.document_loader import load_text as _load_text, load_pdf as _load_pdf
 from app.services.retrieval import SBertEmbedding
+from app.services.chunking import chunk_document
 
 
 def load_text_file(path: str) -> str:
@@ -102,26 +103,17 @@ def load_all_documents(dataset_dir: str, limit: int = None):
 
 
 def chunk_documents(documents):
-    """Split documents using type-aware chunking."""
+    """Split documents using article-aware, type-aware chunking.
+
+    Delegates to app.services.chunking.chunk_document so build_index and
+    ingest_pipeline share one chunking implementation (they must produce
+    identically-structured chunks or the index drifts out of sync)."""
     all_chunks = []
-
     for doc in tqdm(documents, desc="Chunking"):
-        doc_type = doc.metadata.get("doc_type", "legal_reference")
-        cfg = config.CHUNKING_CONFIGS.get(doc_type, {"size": 1024, "overlap": 150})
+        all_chunks.extend(chunk_document(doc, len(all_chunks)))
 
-        splitter = RecursiveCharacterTextSplitter(
-            chunk_size=cfg["size"],
-            chunk_overlap=cfg["overlap"],
-            separators=["\n\n", "\n", ".", "،", " "],
-        )
-
-        chunks = splitter.split_documents([doc])
-        for i, chunk in enumerate(chunks):
-            chunk.metadata["chunk_index"] = len(all_chunks) + i
-            chunk.metadata["referenced_articles"] = extract_article_references(chunk.page_content)
-        all_chunks.extend(chunks)
-
-    print(f"✅ Created {len(all_chunks):,} chunks")
+    article_aware = sum(1 for c in all_chunks if c.metadata.get("primary_article"))
+    print(f"✅ Created {len(all_chunks):,} chunks ({article_aware:,} article-anchored)")
     return all_chunks
 
 

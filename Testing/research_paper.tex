@@ -105,14 +105,24 @@ procedural-defence reasoning checklist paired with a grounding-safe few-shot
 exemplar, and is deployed as a production FastAPI service with multi-provider
 failover, big-context routing, persistent multi-turn sessions, token
 streaming, automated watch-folder ingestion with hot-reload, and a documented
-.NET integration contract. We release the corpus, the system, the five-version
-evaluation trail, and a CLI test harness.
+.NET integration contract. Finally, we report a retrieval-quality optimisation
+phase targeting the retrieval ceiling that bounds answer correctness---article-aware
+chunking that keeps each statute article intact in one retrievable unit (live), a
+widened cross-encoder candidate pool (live), and a BGE-M3 embedding upgrade
+prepared behind configuration---together with a scored evaluation harness reporting
+recall@k, article-recall, primary-hit@k, MRR, hallucination rate, abstention, and
+confidence calibration over a labeled gold set, so every change is measurable. We
+also report a practical systems finding: on CPU-only hardware the highest-quality
+embedder can be infeasible to \emph{build} without accelerator access, making the
+embedder a joint quality/operability choice. We release the corpus, the system,
+the multi-version evaluation trail, and the evaluation harness.
 \end{abstract}
 
 \begin{keyword}
 Arabic NLP \sep Retrieval-Augmented Generation \sep Legal Information
 Retrieval \sep Hallucination Mitigation \sep Egyptian Criminal Law \sep
-Article-Lookup Rescue \sep Iterative Retrieval \sep Dataset Construction
+Article-Lookup Rescue \sep Iterative Retrieval \sep Article-Aware Chunking \sep
+BGE-M3 \sep Dataset Construction
 \end{keyword}
 
 \end{frontmatter}
@@ -204,6 +214,17 @@ metadata lookup, and answer rewriting is required.
         agentic self-check for defence memoranda
         (Section~\ref{sec:selfcheck}), and a frozen, documented wire contract
         for an external .NET frontend.
+  \item A \textbf{retrieval-quality optimisation phase with a scored evaluation
+        harness} (Section~\ref{sec:retropt}): article-aware chunking that keeps
+        each statute article intact in one retrievable unit and a widened
+        cross-encoder candidate pool (both live), plus a BGE-M3 embedding upgrade
+        prepared behind configuration with build/swap tooling---together targeting
+        the retrieval ceiling that bounds answer correctness---accompanied by a
+        labeled-gold-set harness reporting recall@k, article-recall, primary-hit@k,
+        MRR, hallucination rate, abstention, and confidence calibration, so every
+        retrieval/LLM/chunking change is measurable and reproducible. We
+        additionally report the CPU-embedding-cost constraint that defers the
+        embedding rollout to GPU-equipped hardware.
 \end{enumerate}
 
 % =============================================================================
@@ -1161,6 +1182,99 @@ rescue in v6 (\ar{تم استرجاع مواد إضافية من قاعدة ال
 that no single mechanism is sufficient: each layer recovers a distinct
 class of failure.
 
+\subsection{Retrieval-quality optimisation (v9): embeddings, chunking,
+reranking, and a scored harness}\label{sec:retropt}
+
+The v3$\to$v8 evolution (Table~\ref{tab:results}) drove \emph{citation
+fidelity}---what the system cites, given its context---to a 0\,\% hallucination
+rate. It did not address the complementary ceiling: whether the authoritative
+article ever \emph{reaches} the context. A grounding pipeline can only validate
+citations against what retrieval surfaces; if the relevant article never enters
+the top-$k$, the best achievable outcome is an honest refusal, not a correct
+answer. The v9 work targets retrieval quality directly, along four axes, and
+introduces the measurement instrument that makes such tuning auditable.
+
+\paragraph{Motivation: the retrieval ceiling} Three structural weaknesses
+bounded recall. (i)~The embedder was \texttt{paraphrase-multilingual-MiniLM-L12-v2}
+(384-dim), a general-purpose multilingual encoder chosen for fast CPU rebuilds;
+it is not domain-tuned, is comparatively weak on Arabic legal phrasing, and its
+512-token cap silently truncated longer statute chunks. (ii)~Chunking was purely
+character-recursive, so a single article's text could be split across a boundary
+or share a chunk with an unrelated neighbour, diluting the signal for the exact
+unit a citation-driven system must retrieve. (iii)~The cross-encoder reranker
+re-scored only the top-10 RRF candidates, so a relevant chunk fused at rank~11 or
+lower could never be promoted.
+
+\paragraph{Enhancement~1: embedding upgrade (MiniLM-384 $\to$ BGE-M3-1024)} We
+integrate \texttt{BAAI/bge-m3} (1{,}024-dim) behind the embedding configuration as
+the target encoder: a multilingual model with strong Arabic retrieval and native
+long-context support (sequence length raised $512\to1{,}024$, eliminating
+truncation), consistent with Aboasal~et~al.~\cite{aboasal2025} reporting
+substantially higher MAP with BGE-M3 on a comparable Arabic legal task. As
+dimensionality changes, deploying it requires a full FAISS rebuild, performed into
+a staging directory and swapped atomically so the live index keeps serving. The
+rollout is deferred (see \emph{Deployment status} below) but the path is fully
+prepared.
+
+\paragraph{Enhancement~2: article-aware chunking} For statute-structured document
+types (Penal Code, Code of Criminal Procedure, legal-reference collections) the
+chunker splits on article-header boundaries (\ar{المادة N}), emitting each article
+as a single intact chunk; only an article exceeding the doc-type chunk size is
+sub-split, and narrative material (cases, rulings, encyclopedia) keeps recursive
+character splitting. Each article-anchored chunk carries a new
+\texttt{primary\_article} field---the article the chunk \emph{is}, rather than one
+it merely cross-references---preferred when populating the per-source article field
+and feeding the article-validation and topic-match confidence signals. The chunker
+is the single source of truth shared by the batch builder and the incremental
+ingest pipeline, so the two index-writers cannot drift.
+
+\paragraph{Enhancement~3: wider reranker pool} The cross-encoder now re-scores the
+top-50 RRF candidates rather than the top-10, rescuing relevant chunks fused at low
+rank. The cost is a modest per-query CPU increase and no rebuild---the one
+zero-cost, immediately-deployable lever of the four.
+
+\paragraph{Enhancement~4: a scored evaluation harness} To make retrieval tuning
+measurable rather than impressionistic, \texttt{eval\_harness.py} scores a labeled
+gold set and emits a machine-readable scorecard. A \emph{retrieval mode} (LLM-free)
+measures the ceiling---recall@k, article-recall, primary-hit@k (whether a retrieved
+chunk \emph{is} an expected article, a direct test of article-aware chunking), and
+MRR; an \emph{end-to-end mode} scores citation recall, hallucination rate,
+out-of-scope abstention, confidence calibration, and latency against the live API.
+A \texttt{--compare} mode diffs two scorecards. This harness is the backbone for
+the before/after comparison once the embedding rollout lands, and for all future
+tuning.
+
+\paragraph{Deployment status and the CPU-embedding constraint} The four
+enhancements differ in deployment cost. The widened reranker pool (Enhancement~3)
+is a runtime configuration change and is \textbf{live} with no rebuild.
+Article-aware chunking (Enhancement~2) is \textbf{implemented and validated}, and
+is applied online to every newly-ingested document; on a 100-file validation sample
+it produced 14{,}060 chunks of which \textbf{11{,}152 (79\,\%) were article-anchored},
+confirming that the bulk of statute content is now cut at article boundaries rather
+than arbitrary character offsets. The scored harness (Enhancement~4) is
+\textbf{delivered}. The embedding upgrade (Enhancement~1), however, requires
+re-embedding the entire corpus, and here we report a concrete systems result: on the
+CPU-only reference machine (the GPU is unusable---its compute capability 5.0 is below
+the floor required by current PyTorch builds), BGE-M3 embeds at roughly
+\textbf{5.5\,s per chunk} at 1{,}024-dim/1{,}024-token, which---compounded by the
+$\sim$3$\times$ chunk-count increase from article-aware splitting---projects to
+\textbf{multiple days} of continuous computation for a full-corpus rebuild. We
+therefore \textbf{defer the embedding rollout to a GPU-equipped environment} rather
+than peg the production CPU for days; the configuration, build/swap tooling, and
+evaluation harness are all in place so the rebuild and its before/after scorecard
+reduce to a single batch run plus a \texttt{--compare}. This is itself a useful
+deployment lesson for resource-constrained Arabic-RAG teams: the embedder that
+maximises retrieval quality may be infeasible to \emph{build} without accelerator
+access, making the embedder choice a joint quality/operability decision.
+
+\paragraph{Positioning} v9 is qualitatively different from v3--v8: the earlier
+layers are \emph{defensive} (they prevent the model from asserting what it cannot
+support), whereas v9 is \emph{generative of recall} (it raises what the model can
+legitimately support). The two are complementary---a higher ceiling converts more
+queries into grounded answers rather than honest refusals, without relaxing the
+0\,\% hallucination property, since every citation still passes the same evidence
+validator.
+
 % =============================================================================
 \section{Implementation, Deployment, and Integration}\label{sec:deploy}
 
@@ -1231,12 +1345,19 @@ lift this constraint at marginal cost.
 articles. A dedicated article-definition index, populated by paragraph-level
 segmentation of the Penal Code text, would address this.
 
-\textbf{Embedding model.} The current index uses
-\texttt{paraphrase-multilingual-MiniLM-L12-v2} (384-dim). Aboasal
-et~al.~\cite{aboasal2025} report substantially higher MAP scores with BGE-M3
-(1{,}024-dim). An index rebuild with BGE-M3 plus article-aware chunking is
-the single largest remaining improvement, gated on $\sim$3--7\,h of CPU
-rebuild time.
+\textbf{Embedding model and retrieval ceiling.} The retrieval-quality
+optimisation of Section~\ref{sec:retropt} (v9)---the BGE-M3 (1{,}024-dim)
+embedding upgrade, article-aware chunking, and the widened reranker pool---directly
+addresses what was previously this paper's single largest deferred improvement.
+The reranker widening is live and article-aware chunking is implemented (applied
+online to new ingests and validated on a sample); the BGE-M3 embedding rollout is
+deferred to a GPU-equipped environment because, as quantified in
+Section~\ref{sec:retropt}, BGE-M3 embedding on the CPU-only reference machine
+(whose GPU is unusable due to a compute-capability mismatch with current PyTorch)
+costs $\sim$5.5\,s/chunk and projects to multiple days for the full corpus. The
+build/swap tooling and evaluation harness are in place so the rollout reduces to a
+single batch run plus a \texttt{--compare} scorecard once accelerator access is
+available.
 
 \textbf{Evaluation scope.} Our 28-question benchmark is small relative to the
 13{,}000-case ALARB~\cite{alarb2025} and the 2{,}500-pair set

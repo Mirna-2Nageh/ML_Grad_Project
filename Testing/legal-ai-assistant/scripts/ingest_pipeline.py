@@ -37,6 +37,7 @@ from app.services.preprocessing import (
 )
 from app.services.document_loader import load_text as _load_text, load_pdf as _load_pdf, load_docx as _load_docx
 from app.services.retrieval import SBertEmbedding
+from app.services.chunking import chunk_document
 
 logging.basicConfig(
     level=logging.INFO,
@@ -128,21 +129,12 @@ def process_files(file_paths, dry_run=False):
         logger.info("🔍 DRY RUN — Skipping chunking and indexing")
         return documents, []
 
-    # Chunk
+    # Chunk (article-aware; shared with build_index via app.services.chunking).
+    # chunk_index stays new-batch-relative here exactly as before — merge_into_indices
+    # owns how new chunks are positioned in the global chunks.pkl.
     all_chunks = []
     for doc in tqdm(documents, desc="Chunking"):
-        doc_type = doc.metadata.get("doc_type", "legal_reference")
-        cfg = config.CHUNKING_CONFIGS.get(doc_type, {"size": 2048, "overlap": 300})
-        splitter = RecursiveCharacterTextSplitter(
-            chunk_size=cfg["size"],
-            chunk_overlap=cfg["overlap"],
-            separators=["\n\n", "\n", ".", "،", " "],
-        )
-        chunks = splitter.split_documents([doc])
-        for i, chunk in enumerate(chunks):
-            chunk.metadata["chunk_index"] = len(all_chunks) + i
-            chunk.metadata["referenced_articles"] = extract_article_references(chunk.page_content)
-        all_chunks.extend(chunks)
+        all_chunks.extend(chunk_document(doc, len(all_chunks)))
 
     logger.info(f"✅ Created {len(all_chunks):,} chunks")
     return documents, all_chunks

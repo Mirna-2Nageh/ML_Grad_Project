@@ -31,6 +31,16 @@ if [ -f data.legacy/expert_rules.json ] && [ ! -f data/expert_rules.json ]; then
     cp data.legacy/expert_rules.json data/
 fi
 
+# Carry persisted chat sessions forward so a rebuild doesn't wipe user history.
+if [ -d data.legacy/sessions ] && [ ! -d data/sessions ]; then
+    echo "💬 Carrying sessions/ forward"
+    cp -r data.legacy/sessions data/
+fi
+
+# Deliberately NOT carried forward: answer_cache.json — cached answers were grounded in
+# the OLD retrieval, so they are stale against the new index. It will repopulate on demand.
+echo "🗑️  answer_cache.json intentionally left behind (stale against the new index)"
+
 echo ""
 echo "✅ Swap complete. Index files now in place:"
 ls -la data/ | head -10

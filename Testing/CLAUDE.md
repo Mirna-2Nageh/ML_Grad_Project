@@ -29,8 +29,19 @@ python scripts/build_index.py
 python scripts/build_index.py --limit 100  # fast dev path
 python scripts/build_from_chunks.py        # alt path: rebuilds from a pre-existing chunks.pkl
 
+# Embedding-model upgrade (e.g. MiniLM-384 → bge-m3-1024) — build into a staging dir so the
+# live index keeps serving, then swap. Keep .env on the OLD model until swap (dim mismatch
+# crashes the server). The build reads embedding settings from env, so override them inline:
+EMBED_MODEL=BAAI/bge-m3 EMBED_DIMENSIONS=1024 EMBED_MAX_SEQ_LENGTH=1024 EMBED_BATCH_SIZE=8 \
+  python scripts/build_index.py --output-dir data.new --embed-model BAAI/bge-m3
+./scripts/swap_new_index.sh                # data/→data.legacy/, data.new/→data/, then flip .env
+
 # Add documents to an existing index
 python scripts/ingest_pipeline.py --input-dir /path/to/new/files [--dry-run]
+
+# Measure retrieval/answer quality before & after a change (see scripts/eval_harness.py)
+python scripts/eval_harness.py --mode retrieval --tag baseline   # LLM-free, no server needed
+python scripts/eval_harness.py --compare baseline bge_m3         # diff two scorecards
 
 # Run backend + Streamlit UI together (cleans ports 8000/8501 first)
 ./start_project.sh                         # at the Testing/ level
@@ -63,11 +74,12 @@ The system is a hybrid-retrieval RAG service for Egyptian Criminal Law, Arabic-f
 
 **Chunk indexing.** `chunk.metadata["chunk_index"]` is the position in `chunks.pkl` — retrieval relies on this to map FAISS hits back to chunks in O(1) (legacy chunks without it fall back to linear scan). New chunk-creation code must also set:
 - `legal_topic` — encyclopedia subdir name (`تزوير`, `قتل عمد`, …) extracted by `get_legal_topic(path)`. Empty for non-encyclopedia files. Used for `topic_match` confidence factor.
-- `referenced_articles` — list of Egyptian-law article numbers cited in the chunk text, extracted by `extract_article_references()`. Used to feed `SourceInfo.article` + speed up evidence validation.
+- `referenced_articles` — list of Egyptian-law article numbers cited in the chunk text, extracted by `extract_article_references()`. Speeds up evidence validation.
+- `primary_article` — the article a chunk *is* (set by article-aware chunking when a chunk was cut at a `المادة N` boundary; empty otherwise). Preferred over `referenced_articles[0]` when populating `SourceInfo.article`, so a chunk that literally is Article 230 reports "230" rather than some article it merely cross-references.
 
 **Context expansion.** After rerank picks top-`k` chunks, retrieval grows each hit by one neighbor on each side **only when the neighbor shares the same `source` filename** (`app/services/retrieval.py:retrieve`). The `seen_indices` set deduplicates so expansion never double-counts.
 
-**Chunking is doc-type-aware.** `clean_arabic_legal_text()` normalizes Arabic (strips diacritics, unifies alef forms, **normalizes Arabic-Indic digits ٠-٩ → 0-9**, removes boilerplate); `get_document_type()` classifies by Arabic substrings in the file path (e.g. `جنايات` → `criminal_case`, `محكمه النقض` → `cassation_ruling`); chunk size + overlap come from `config.CHUNKING_CONFIGS[doc_type]`. Changing chunking config or digit normalization without rebuilding the index will drift the data out of sync.
+**Chunking is doc-type-aware *and* article-aware.** `clean_arabic_legal_text()` normalizes Arabic (strips diacritics, unifies alef forms, **normalizes Arabic-Indic digits ٠-٩ → 0-9**, removes boilerplate); `get_document_type()` classifies by Arabic substrings in the file path (e.g. `جنايات` → `criminal_case`, `محكمه النقض` → `cassation_ruling`); chunk size + overlap come from `config.CHUNKING_CONFIGS[doc_type]`. The actual splitting lives in **`app/services/chunking.py`** (single source of truth — both `build_index.py` and `ingest_pipeline.py` call `chunk_document()`, so the two index-writers can't drift). For statute-like doc_types (`ARTICLE_STRUCTURED_TYPES`: penal_code, criminal_procedure, criminal_law_reference, legal_reference, legal_rules_collection) it splits on `المادة N` boundaries so each article stays intact in one chunk (setting `primary_article`); oversized articles are sub-split, and narrative docs (cases/rulings/encyclopedia) keep recursive character splitting. Changing chunking logic or digit normalization without rebuilding the index will drift the data out of sync.
 
 **Sessions.** `app/services/session.py` keeps chat history per `session_id`. When `turn_count > SESSION_MAX_TURNS` (default 6, configurable), older turns are LLM-summarized; the last `SESSION_KEEP_RECENT * 2` messages stay verbatim. The summary is injected into future prompts as `[ملخص المحادثة السابقة]`.
 
@@ -79,7 +91,7 @@ Sessions **persist to disk** as JSON files in `SESSION_PERSIST_DIR` (default `da
 
 **Benchmark.** `scripts/benchmark_llms.py` queries our system + `openai/gpt-4o-mini` + `anthropic/claude-sonnet-4.5` (all via OpenRouter — single API key) on the same Arabic legal questions. Two modes: `--mode rag` (all 3 share the same retrieved context, isolates answer quality) or `--mode raw` (each model answers from its own knowledge, tests baseline legal knowledge). Outputs a CSV with per-model latency, answer length, cited article numbers. Models configurable via `BENCHMARK_OPENAI_MODEL` + `BENCHMARK_CLAUDE_MODEL` env vars.
 
-**Embeddings.** Default is local `BAAI/bge-m3` on CPU via `sentence-transformers` (1024-dim). `USE_REMOTE_EMBEDDINGS=true` switches to remote: Google Gemini Embeddings if `EMBED_PROVIDER=google` (rate-limited to 15 RPM via a 4 s sleep + 20-doc batches), otherwise OpenRouter. Switching providers requires rebuilding the FAISS index because vector dimensionality and semantics differ.
+**Embeddings.** `config.py` default is local `BAAI/bge-m3` on CPU via `sentence-transformers` (1024-dim) — strong on Arabic legal text and long chunks. Earlier deployments ran `paraphrase-multilingual-MiniLM-L12-v2` (384-dim) for faster CPU rebuilds; that model is the weakest link in retrieval quality, so the bge-m3 rebuild is the largest single quality lever. **The embedding model in `.env` and the on-disk FAISS index must match dimensions**, so flip `.env` (`EMBED_MODEL`/`EMBED_DIMENSIONS`/`EMBED_MAX_SEQ_LENGTH`/`EMBED_BATCH_SIZE`) only at index-swap time: build the new index into `data.new/` with explicit env overrides, then `scripts/swap_new_index.sh`. `USE_REMOTE_EMBEDDINGS=true` switches to remote: Google Gemini Embeddings if `EMBED_PROVIDER=google` (rate-limited to 15 RPM via a 4 s sleep + 20-doc batches), otherwise OpenRouter. Switching providers also requires a rebuild.
 
 **Reranker.** `bge-reranker-v2-m3` via `sentence-transformers.CrossEncoder`, loaded once at startup by `RerankerService.load()`. Sigmoid activation bounds scores to [0,1] so they feed cleanly into confidence scoring. Toggleable via `USE_RERANKER` env var; if it fails to load, retrieval falls back to RRF-only order automatically.
 
@@ -98,9 +110,11 @@ Sessions **persist to disk** as JSON files in `SESSION_PERSIST_DIR` (default `da
 - `services/llm.py` — `call_llm` / `async_call_llm` (sync + threaded async, Gemini→OpenRouter fallback) and `async_stream_llm` (async generator, OpenRouter-only) for the streaming endpoint.
 - `services/session.py` — `SessionManager` with sliding-window compaction, atomic JSON-file persistence, TTL-based pruner.
 - `services/preprocessing.py` — Arabic normalization (incl. Arabic-Indic digit → Western), BM25 tokenization, doc-type/legal-category classifiers, `get_legal_topic`, `extract_article_references`.
+- `services/chunking.py` — article-aware chunker (`chunk_document`, `chunk_documents`); single source of truth shared by `build_index.py` and `ingest_pipeline.py`.
 - `core/prompts.py` — `SYSTEM_MESSAGES` and `PROMPTS` dicts (keys: `qa_standard`, `qa_restrictive`, `weakness`, `defense`, `chat`, `summarize`, `compact_history`); "Conan" persona prompt lives here.
 - `scripts/watch_ingest.py` — watch-folder ingest CLI. Uses functions from `scripts/ingest_pipeline.py`. Tracks processed files in `data/.ingested_files.json`.
 - `scripts/benchmark_llms.py` — compare our RAG vs `openai/gpt-4o-mini` vs `anthropic/claude-sonnet-4.5` (all via OpenRouter).
+- `scripts/eval_harness.py` — scored evaluation over a labeled gold set. `--mode retrieval` (LLM-free: recall@k, article_recall, primary_hit@k, MRR) measures the retrieval ceiling; `--mode e2e` (hits `/qa`: citation recall, hallucination rate, out-of-scope abstention, confidence calibration, latency). Writes `eval_runs/scorecard_<tag>.json`; `--compare A B` diffs two scorecards for before/after tuning. This is the measurement backbone — re-run it after any retrieval/LLM/chunking change.
 
 ## Conventions
 

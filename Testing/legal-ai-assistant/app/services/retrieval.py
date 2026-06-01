@@ -384,7 +384,11 @@ class RetrievalService:
             legal_topic = meta.get("legal_topic", "") or (
                 meta.get("subcategory", "") if meta.get("subcategory") not in (None, "", "عام") else ""
             )
-            article = (referenced[0] if referenced else None) or (meta.get("article_number") or None)
+            # Prefer the article this chunk *is* (set by article-aware chunking) over
+            # the first article it merely references; fall back to legacy article_number.
+            article = (meta.get("primary_article") or None) \
+                or (referenced[0] if referenced else None) \
+                or (meta.get("article_number") or None)
             sources.append({
                 "filename": filename,
                 "source": meta.get("source") or meta.get("file_name", ""),
@@ -590,7 +594,11 @@ class RetrievalService:
             legal_topic = meta.get("legal_topic", "") or (
                 meta.get("subcategory", "") if meta.get("subcategory") not in (None, "", "عام") else ""
             )
-            article = (referenced[0] if referenced else None) or (meta.get("article_number") or None)
+            # Prefer the article this chunk *is* (set by article-aware chunking) over
+            # the first article it merely references; fall back to legacy article_number.
+            article = (meta.get("primary_article") or None) \
+                or (referenced[0] if referenced else None) \
+                or (meta.get("article_number") or None)
             sources.append({
                 "filename": filename,
                 "source": meta.get("source") or meta.get("file_name", ""),
