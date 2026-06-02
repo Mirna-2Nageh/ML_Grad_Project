@@ -124,6 +124,10 @@ class WeaknessResponse(BaseModel):
     conflicts_detected: bool = Field(default=False)
     latency_ms: float = Field(..., description="Total response time in milliseconds")
     model: str = Field(default="", description="LLM model used")
+    # ── Agentic-pipeline enrichment (optional; null on the single-shot path) ──
+    pipeline: bool = Field(default=False, description="True if produced by the multi-agent pipeline")
+    timeline: Optional[List[dict]] = Field(default=None, description="Chronological case events (event, date, time) extracted by the Document Analysis agent")
+    weaknesses_detected: Optional[List[dict]] = Field(default=None, description="Typed weakness hypotheses surfaced by the Weakness Detection agent")
 
 
 class DefenseResponse(BaseModel):
@@ -137,6 +141,10 @@ class DefenseResponse(BaseModel):
     latency_ms: float = Field(..., description="Total response time in milliseconds")
     model: str = Field(default="", description="LLM model used")
     self_check_revisions: int = Field(default=0, description="Number of agentic self-check revision passes applied to the memo")
+    # ── Agentic-pipeline enrichment (optional; null on the single-shot path) ──
+    pipeline: bool = Field(default=False, description="True if produced by the multi-agent pipeline")
+    timeline: Optional[List[dict]] = Field(default=None, description="Chronological case events extracted by the Document Analysis agent")
+    weaknesses_detected: Optional[List[dict]] = Field(default=None, description="Typed weakness hypotheses surfaced by the Weakness Detection agent")
 
 
 class ForensicResponse(BaseModel):

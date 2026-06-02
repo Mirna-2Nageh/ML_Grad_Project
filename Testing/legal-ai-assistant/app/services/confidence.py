@@ -90,6 +90,35 @@ def validate_evidence(answer: str, contexts: List[str]) -> Tuple[bool, List[str]
     return len(missing) == 0, missing
 
 
+# Court-of-Cassation precedent citation, e.g. "الطعن رقم 8875 لسنة 6",
+# "طعن 1605 لسنة 55", "نقض رقم 141 لسنة 36". Captures (case_number, year).
+_PRECEDENT_RE = re.compile(
+    r'(?:ال)?(?:طعن|نقض)\s+(?:رقم\s+)?(\d{1,6})\s+لسن[ةه]\s+(\d{1,4})'
+)
+
+
+def validate_precedents(answer: str, contexts: List[str]) -> Tuple[bool, List[str]]:
+    """Check every Court-of-Cassation precedent cited in `answer` (طعن/نقض رقم N لسنة M)
+    is grounded in the retrieved `contexts`. Returns (passed, ungrounded_precedents).
+
+    The article validator only checks 'المادة N'; precedent numbers are a separate,
+    easily-hallucinated citation form, so they get their own grounding check. A precedent
+    is considered grounded when its case number AND year both appear in the same retrieved
+    chunk (digit-normalized)."""
+    norm_answer = normalize_arabic_indic_digits(answer)
+    cited = _PRECEDENT_RE.findall(norm_answer)
+    if not cited:
+        return True, []
+    norm_contexts = [normalize_arabic_indic_digits(c) for c in contexts]
+    missing: List[str] = []
+    for num, year in cited:
+        grounded = any(num in c and year in c for c in norm_contexts)
+        label = f"طعن {num} لسنة {year}"
+        if not grounded and label not in missing:
+            missing.append(label)
+    return len(missing) == 0, missing
+
+
 def topic_match(question: str, sources: List[Dict]) -> bool:
     """True if any source's `legal_topic` (encyclopedia subdir name) appears in the question."""
     for s in sources:

@@ -46,15 +46,20 @@ PROCEDURAL_DEFENSE_CHECKLIST = (
     "the facts genuinely support it — never invent one, and state explicitly when the file lacks the "
     "detail needed to assess it):\n"
     "A. TIMELINE vs. PROSECUTION WARRANT — بطلان القبض والتفتيش السابق على إذن النيابة:\n"
-    "   - Compare the EXACT time of the arrest/search/seizure against the EXACT time the prosecution "
-    "     warrant (إذن النيابة العامة) was issued. If the seizure occurred BEFORE the warrant — even by "
-    "     minutes — raise 'بطلان القبض والتفتيش لحصولهما قبل صدور إذن النيابة العامة' and apply 'ما بُني "
-    "     على باطل فهو باطل' (every procedure built on the void arrest is itself void). This is usually "
-    "     the STRONGEST defense in the case — lead with it.\n"
-    "   - Read clock times precisely: 'الساعة 12:00 صباحاً' / 'منتصف الليل' marks the START of that "
-    "     calendar day, so it is EARLIER than acts later the same day. An event stated as happening "
-    "     'صباحاً' on a date PRECEDES a warrant issued on the EVENING of that same date — do NOT silently "
-    "     assume the morning event came afterward. Compute the actual gap before concluding.\n"
+    "   - STEP 1 — extract the FULL timestamp (calendar DATE + clock time) of BOTH (i) the إذن النيابة "
+    "     العامة and (ii) the arrest/search/seizure, and state both explicitly before drawing any "
+    "     conclusion (e.g. 'الإذن: 15/8 الساعة 11 مساءً' و'الضبط: 16/8 الساعة 3:30 صباحاً').\n"
+    "   - STEP 2 — compare the DATE FIRST, then the time. A later calendar date is ALWAYS after an "
+    "     earlier one, regardless of time-of-day: an event on 16/8 صباحاً is AFTER a warrant issued on "
+    "     15/8 مساءً because it is the NEXT day. Compare time-of-day ONLY when both events fall on the "
+    "     SAME date (there, 'صباحاً'/'منتصف الليل' marks the start of the day and precedes later acts "
+    "     that same day).\n"
+    "   - STEP 3 — raise 'بطلان القبض والتفتيش لحصولهما قبل صدور إذن النيابة' ONLY if the seizure provably "
+    "     occurred BEFORE the warrant after this full date+time comparison; then apply 'ما بُني على باطل "
+    "     فهو باطل'. If the seizure occurred AFTER the warrant AND within its validity window (e.g. the "
+    "     24-hour limit), the timing is VALID — do NOT raise this defense; say the timing is sound. Also "
+    "     check the other direction: a seizure executed AFTER the warrant's validity period expired is "
+    "     itself بطلان. NEVER assert this defense without first stating the two timestamps and their order.\n"
     "B. IDENTIFIER MISMATCH — بطلان تفتيش/ضبط ما لم يشمله الإذن:\n"
     "   - Compare EVERY identifier in the warrant (vehicle/motorcycle plate numbers, names, national IDs, "
     "     addresses, descriptions) against the matching identifier in the seizure record (محضر الضبط). "
@@ -70,16 +75,39 @@ PROCEDURAL_DEFENSE_CHECKLIST = (
     "     warrant — it shows seriousness of execution. Raise spatial excess ONLY when the seizure clearly "
     "     occurred OUTSIDE the precinct's jurisdiction.\n"
     "D. CHAIN OF CUSTODY / SEALING — سلامة التحريز:\n"
-    "   - Identify who performed the arrest/search and WROTE the seizure record versus who SEALED/STAMPED "
-    "     the seized items (بصمة خاتم الأحراز). If the seal bears a different officer's name (e.g., أمين "
-    "     شرطة) whose role is not explained in the record, raise 'التراخي في التحريز / احتمال اختلاط "
-    "     الأحراز / بطلان لعدم قيام محرر المحضر بالتحريز بنفسه'.\n"
-    "E. INTENT FROM PROFESSION & SEIZED CASH — انتفاء قصد الاتجار:\n"
+    "   - Sealing/stamping of the أحراز by an أمين شرطة (rather than by the officer who wrote the محضر) "
+    "     is ROUTINE in Egyptian practice and does NOT by itself invalidate the seizure — do NOT inflate "
+    "     it into بطلان. Raise a تحريز defense ONLY on an ACTUAL defect: broken or mismatched seals, a "
+    "     gap/break in the chain of custody (الأحراز left unsealed or unaccounted between seizure and "
+    "     النيابة), weights/descriptions that differ between the محضر and the فضّ الأحراز, or contents "
+    "     inconsistent with what was recorded. If the seals are intact and the chain is continuous, state "
+    "     the التحريز is sound rather than manufacturing a weakness.\n"
+    "E. INTENT FROM PROFESSION & SEIZED CASH & PARAPHERNALIA — انتفاء قصد الاتجار:\n"
     "   - Compare the defendant's stated profession (e.g., delivery worker / دليفري) and the nature of any "
     "     seized money (small/mixed denominations, a work float 'عهدة' or daily revenue 'إيراد يومي') "
     "     against the prosecution's claim that the cash is trafficking proceeds. A lawful alternative "
     "     explanation for the money undermines قصد الاتجار and the moral element; argue re-characterization "
-    "     to mere possession / حيازة-إحراز بغير قصد الاتجار where the facts fit."
+    "     to mere possession / حيازة-إحراز بغير قصد الاتجار where the facts fit.\n"
+    "   - Check for the ABSENCE of trafficking paraphernalia: if no scales (ميزان), packaging/empty bags "
+    "     (أكياس تعبئة), pre-cut wraps (لفافات جاهزة), or sales ledgers (دفاتر/كشوف حسابات) were seized, "
+    "     argue that the seizure is consistent with personal possession rather than قصد الاتجار.\n"
+    "F. INDEPENDENT CORROBORATION — ضعف الدليل لانفراد جهة الاتهام:\n"
+    "   - Check whether the case rests SOLELY on the confidential source (مصدر سري) + the seizing "
+    "     officer's تحريات/أقوال, with NO independent eyewitness (شاهد رؤية مستقل), camera/CCTV, or "
+    "     recorded surveillance. If so, raise the weakness of an uncorroborated, self-contained case and "
+    "     challenge the seriousness of the تحريات (جدية التحريات). Also flag any contradiction in the "
+    "     stated PLACE/TIME of the seizure between the محضر and the defendant's account.\n"
+    "G. FINAL FORENSIC PROOF — انتفاء الدليل الفني النهائي:\n"
+    "   - If the seized substance is described only as 'يشتبه في كونه' a drug and the معمل الكيماوي "
+    "     (chemical-lab) report has NOT yet issued at the investigation stage, point out that there is no "
+    "     conclusive material proof the substance is a controlled drug at this stage — the corpus delicti "
+    "     of the drug charge is not yet established. Do NOT treat a mere 'اشتباه' as a proven analysis.\n"
+    "ALSO — challenge any alleged out-of-record confession (الإقرار المزعوم أمام الضابط): if the officer's "
+    "محضر claims the accused confessed to trafficking but the accused denied it before النيابة, question "
+    "whether the alleged confession is written/signed by the accused or merely narrated by the officer, "
+    "and argue it is not a valid اعتراف. Rank the surfaced weaknesses by real strength; lead with the "
+    "genuinely strong ones, and do NOT present a weak/disproven point (e.g. a timing defense that the "
+    "date comparison defeats) as if it were the lead argument."
 )
 
 # One fully-worked, FICTIONAL example proving how each checklist point (A–E) is reasoned and phrased.
@@ -95,15 +123,19 @@ WORKED_EXAMPLE = (
     "أن السيارة المضبوطة رقمها (ق ر س 1447). حُرّر المحضر بمعرفة الرائد/ (أ)، وبُصمت الأحراز بخاتم أمين "
     "شرطة/ (ب) دون بيان دوره. المتهم يعمل سائق أجرة، وضُبط معه مبلغ من فئات صغيرة متفرقة قيل إنه حصيلة اتجار.\n"
     "التطبيق النموذجي للقائمة:\n"
-    "(أ) بطلان القبض والتفتيش لسبقهما على الإذن: الضبط صباحاً (9:00 ص) سابقٌ على صدور الإذن مساءً (10:00 م) "
-    "بفارق نحو ثلاث عشرة ساعة؛ فيبطل القبض والتفتيش وكل إجراء تلاهما عملاً بقاعدة (ما بُني على باطل فهو "
-    "باطل)، ويُتصدَّر به الدفاع لأنه الأقوى.\n"
+    "(أ) فحص توقيت القبض مقابل الإذن: بعد التأكد أن الحدثين في نفس التاريخ (يوم 3/4)، يكون الضبط صباحاً "
+    "(9:00 ص) سابقاً على صدور الإذن مساءً (10:00 م) من اليوم ذاته بفارق نحو ثلاث عشرة ساعة؛ فيبطل القبض "
+    "والتفتيش وكل إجراء تلاهما عملاً بقاعدة (ما بُني على باطل فهو باطل). [تنبيه منهجي: لو كان الضبط في "
+    "تاريخٍ لاحق للإذن — كضبطٍ صباح 4/4 بعد إذنٍ مساء 3/4 — لكان الضبط بعد الإذن داخل مدة سريانه، فلا يُثار "
+    "هذا الدفع. قارن التاريخ أولاً ثم الساعة.]\n"
     "(ب) بطلان تفتيش السيارة لاختلاف رقمها: الإذن صدر للوحة (ق ر س 4471) بينما المضبوط (ق ر س 1447)، فوقع "
     "التفتيش على شيء لم يشمله الإذن، مع ما يثيره الاختلاف من شبهة خطأ مادي جسيم أو تلفيق.\n"
     "(ج) الاختصاص المكاني — تطبيق صحيح بلا مغالاة: لا يصحّ الدفع بتجاوز المكان ما دام الضبط تمّ داخل دائرة "
     "القسم، وتحديد المكان مسبقاً عبر مصدر سري لا يبطل الإذن بل يؤكد جدية التنفيذ.\n"
-    "(د) سلامة التحريز: محرّر المحضر (الرائد) غير صاحب البصمة على الأحراز (أمين الشرطة) الذي لم يُبيَّن دوره، "
-    "مما يفتح باب التراخي في التحريز واحتمال اختلاط الأحراز أو بطلانه لعدم قيام محرّر المحضر بالتحريز بنفسه.\n"
+    "(د) سلامة التحريز: قيام أمين الشرطة ببصم الأحراز بدلاً من محرّر المحضر أمرٌ معتاد في العمل ولا يبطل "
+    "الضبط في ذاته، فلا يُثار كنقطة ضعف ما دامت الأختام سليمة والسلسلة متصلة؛ والصواب هنا تقرير أن التحريز "
+    "سليم. ولا يُدفَع ببطلان التحريز إلا عند عيبٍ فعلي: كسر الأختام أو اختلافها، أو انقطاع سلسلة الحيازة، أو "
+    "اختلاف الأوزان/الأوصاف بين محضر الضبط وفضّ الأحراز.\n"
     "(هـ) انتفاء قصد الاتجار: المتهم سائق أجرة، وفئات المال الصغيرة المتفرقة تتسق مع إيراد العمل اليومي لا "
     "مع حصيلة بيع، فينهدم الركن المعنوي ويُطلب إعادة التكييف إلى إحراز/حيازة بغير قصد الاتجار.\n"
     "نهاية المثال."
@@ -286,7 +318,38 @@ SYSTEM_MESSAGES = {
         "TASK: Compact the conversation history into a concise summary.\n"
         "Keep all legal facts, article numbers, and key user requirements.\n"
         "Language: Arabic (MSA) only."
-    )
+    ),
+    # ── Agentic pipeline system messages ──
+    "doc_analysis": (
+        "You are a meticulous Egyptian-criminal-law document analyst. You read a case file (police "
+        "report / investigation محضر) and extract a STRUCTURED, faithful representation of it. You do "
+        "NOT argue, evaluate, or invent — you only extract what the text states.\n"
+        "CRITICAL — TIMELINE: capture every procedural event with its EXACT date and time as written "
+        "(إذن النيابة، الضبط والتفتيش، التحريز، العرض على النيابة، الحبس). Normalize dates to YYYY-MM-DD "
+        "where possible and keep the original time. Order events chronologically by DATE first then time "
+        "(a later date is always after an earlier one regardless of time-of-day).\n"
+        "Output ONLY a single valid JSON object (no markdown, no commentary), in the schema the user gives."
+    ),
+    "weakness_hypotheses": (
+        "You are an Egyptian criminal-defense strategist. Given a STRUCTURED case analysis, you generate "
+        "a list of candidate defense-weakness HYPOTHESES for the prosecution's case — each as a testable "
+        "claim tied to specific facts, with a focused legal-research query to find supporting authority.\n"
+        f"{PROCEDURAL_DEFENSE_CHECKLIST}\n"
+        "Generate hypotheses across procedural defects, evidence weakness, missing elements, and "
+        "mitigating circumstances. For any timing-based hypothesis, FIRST verify the chronological order "
+        "from the analysis timeline; do NOT propose 'القبض سابق على الإذن' unless the dates actually show "
+        "it. Mark each hypothesis strength as tentative — it will be confirmed after legal research.\n"
+        "Output ONLY a single valid JSON object (no markdown, no commentary), in the schema the user gives."
+    ),
+    "defense_strategy": (
+        "You are a senior Egyptian defense counsel building a case strategy. Given the case analysis and "
+        "each weakness hypothesis WITH its retrieved legal authorities (statute articles, doctrine, "
+        "Court-of-Cassation precedents), you decide which weaknesses are genuinely STRONG, rank them, and "
+        "discard the weak or disproven ones (e.g. a timing defense the dates defeat, or an أمين-شرطة "
+        "sealing objection with intact seals). Keep only arguments actually supported by the retrieved "
+        "authorities and the case facts.\n"
+        "Output ONLY a single valid JSON object (no markdown, no commentary), in the schema the user gives."
+    ),
 }
 
 PROMPTS = {
@@ -464,5 +527,112 @@ PROMPTS = {
         "Drop pleasantries and verbose explanations.\n\n"
         "Conversation:\n{conversation}\n\n"
         "Compact summary (Arabic):"
+    ),
+
+    # ════════════════════════════════════════════════════════
+    # Agentic pipeline user-prompts (Document Analysis → Weakness
+    # Detection → Defense Strategy → Memorandum/Analysis synthesis).
+    # Intermediate agents emit STRICT JSON; synthesis agents emit Arabic prose.
+    # ════════════════════════════════════════════════════════
+    "doc_analysis": (
+        "Extract a structured analysis of the following Egyptian criminal case file.\n\n"
+        "Case Facts / Police Report / Investigation Record:\n{case_facts}\n\n"
+        "Evidence Items:\n{evidence}\n\n"
+        "Defendant's Statement / Defenses Raised:\n{defendant_statement}\n\n"
+        "Return ONLY this JSON object (Arabic values, no markdown fences):\n"
+        "{{\n"
+        '  "parties": {{"defendant": "", "profession": "", "investigator": "", "prosecutor": ""}},\n'
+        '  "charges": ["<each distinct offense actually charged/described>"],\n'
+        '  "timeline": [{{"event": "<إذن النيابة|الضبط والتفتيش|التحريز|العرض على النيابة|الحبس|...>",'
+        ' "date": "<YYYY-MM-DD or as-stated>", "time": "<HH:MM ص/م or as-stated>", "actor": "", "note": ""}}],\n'
+        '  "facts": ["<key established fact>"],\n'
+        '  "evidence": [{{"item": "", "type": "<مضبوطات|اعتراف|تحريات|مصدر سري|تقرير فني|شهادة|...>",'
+        ' "status_for_prosecution": "<supports|contradicts|neutral|pending>"}}],\n'
+        '  "procedural_steps": ["<step in order>"],\n'
+        '  "contradictions": ["<any internal contradiction between documents or vs. the defendant\'s account>"]\n'
+        "}}\n"
+        "Order `timeline` chronologically by date then time. Copy dates/times EXACTLY as the file states them."
+    ),
+    "weakness_hypotheses": (
+        "Given this structured case analysis, generate the candidate defense-weakness hypotheses.\n\n"
+        "Structured Analysis (JSON):\n{analysis}\n\n"
+        "Work through the PROCEDURAL DEFENSE CHECKLIST and the evidence/elements.\n"
+        "BINDING: if the analysis has a `timing_verdict` field, it is an AUTHORITATIVE machine-computed "
+        "ruling on the arrest-vs-warrant timing — obey it literally. If it says the seizure was after / "
+        "within the warrant's validity, you MUST NOT propose any 'القبض سابق على الإذن' hypothesis; instead "
+        "treat the timing as sound. Only propose that defense when `timing_verdict` says the seizure "
+        "preceded the warrant.\n"
+        "Return ONLY this JSON object (Arabic values, no markdown fences):\n"
+        "{{\n"
+        '  "weaknesses": [{{\n'
+        '    "id": "w1",\n'
+        '    "type": "<إجرائي|دليل|ركن|ظرف>",\n'
+        '    "title": "<short title>",\n'
+        '    "claim": "<the weakness stated as a testable claim tied to specific facts>",\n'
+        '    "supporting_facts": ["<fact from the analysis>"],\n'
+        '    "legal_question": "<the legal question to research>",\n'
+        '    "research_query": "<focused Arabic query to search the legal knowledge base for authority>",\n'
+        '    "tentative_strength": "<قوي|متوسط|ضعيف>"\n'
+        "  }}]\n"
+        "}}\n"
+        "Generate every genuinely-supportable hypothesis; do NOT invent facts. Do NOT include a hypothesis "
+        "the analysis disproves (e.g. a timing defense the dates defeat)."
+    ),
+    "defense_strategy": (
+        "Decide the defense strategy. For each weakness hypothesis you are given its retrieved legal "
+        "authorities (statute articles, doctrine passages, Court-of-Cassation precedents). Rank by real "
+        "strength, keep the strong ones, and discard the weak/disproven ones with a reason.\n\n"
+        "Case Analysis (JSON):\n{analysis}\n\n"
+        "Weaknesses with Retrieved Authorities (JSON):\n{researched}\n\n"
+        "BINDING: honor the analysis `timing_verdict` field if present — it is a machine-computed ruling on "
+        "the arrest-vs-warrant timing. Discard (keep=false) any weakness that contradicts it (e.g. a "
+        "'القبض سابق على الإذن' argument when the verdict says the seizure was after/within the warrant).\n"
+        "Return ONLY this JSON object (Arabic values, no markdown fences):\n"
+        "{{\n"
+        '  "strategy": [{{\n'
+        '    "weakness_id": "w1",\n'
+        '    "title": "",\n'
+        '    "strength": "<قوي|متوسط|ضعيف>",\n'
+        '    "keep": true,\n'
+        '    "argument": "<the developed legal argument, grounded in the retrieved authorities>",\n'
+        '    "authorities": ["<المادة N>", "<نقض ... / مرجع ...>"]\n'
+        "  }}],\n"
+        '  "discarded": [{{"weakness_id": "", "reason": "<why it is weak or disproven>"}}],\n'
+        '  "ordered_argument_ids": ["w_strongest", "..."]\n'
+        "}}\n"
+        "Only keep `authorities` that actually appear in the retrieved material for that weakness — never fabricate a citation."
+    ),
+    # Synthesis: final grounded WEAKNESS ANALYSIS from the strategy + authorities.
+    "weakness_agentic": (
+        "Write the final defense weakness-analysis (تحليل نقاط الضعف) for this Egyptian criminal case, "
+        "using ONLY the material below. Do NOT invent facts, article numbers, or rulings.\n\n"
+        "Case Analysis (JSON):\n{analysis}\n\n"
+        "Selected Strategy with grounded arguments + authorities (JSON):\n{strategy}\n\n"
+        "Retrieved Legal Authorities (text):\n{authorities}\n\n"
+        "Produce a numbered Arabic analysis across the four dimensions — (1) أوجه القصور الإجرائية، "
+        "(2) ضعف الأدلة، (3) نقص أركان الجريمة، (4) الظروف المخففة أو المبيحة — leading with the strongest "
+        "kept arguments and OMITTING the discarded ones. Tie every point to a specific fact and, where "
+        "available, a cited article number or precedent from the authorities.\n"
+        "BINDING on timing: if the analysis has a `timing_verdict`, quote/reflect it exactly. When it says "
+        "the seizure was after/within the warrant, you MUST state the timing is sound and MUST NOT write "
+        "that the arrest preceded the warrant — never call that the strongest defense. Only present the "
+        "timing as a defect when `timing_verdict` says the seizure preceded the warrant.\n\n"
+        "تحليل نقاط الضعف (بالعربية):"
+    ),
+    # Synthesis: final grounded DEFENSE MEMORANDUM from the strategy + authorities.
+    "defense_agentic": (
+        "Draft a formal Egyptian criminal-court defense memorandum (مذكرة دفاع), using ONLY the material "
+        "below. Do NOT invent articles, rulings, or facts.\n\n"
+        "Case Analysis (JSON):\n{analysis}\n\n"
+        "Selected Strategy with grounded arguments + authorities (JSON):\n{strategy}\n\n"
+        "Retrieved Legal Authorities (text):\n{authorities}\n\n"
+        "Use exactly these headings: «الوقائع» ثم «الإطار القانوني» ثم «أوجه الدفاع» (a separate "
+        "sub-section per kept argument, strongest first) ثم «الطلبات». Strictly separate established facts "
+        "from legal argument. Ground every legal point in a cited article number or precedent from the "
+        "authorities; omit the discarded weaknesses. Formal MSA Arabic.\n"
+        "BINDING on timing: if the analysis has a `timing_verdict`, obey it exactly. When it says the "
+        "seizure was after/within the warrant, do NOT argue 'القبض سابق على الإذن' — treat the timing as "
+        "sound. Only raise a timing defect when the verdict says the seizure preceded the warrant.\n\n"
+        "مذكرة الدفاع (بالعربية):"
     ),
 }

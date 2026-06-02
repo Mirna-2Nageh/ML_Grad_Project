@@ -1,10 +1,16 @@
 """Cross-encoder reranker (bge-reranker-v2-m3) — sits between RRF and final top-k."""
 import logging
+import threading
 from typing import List, Tuple
 
 import config
 
 logger = logging.getLogger(__name__)
+
+# Bounds concurrent cross-encoder inference. Reranks run in threadpool threads (handlers
+# offload via asyncio.to_thread), so a threading.Semaphore is the right primitive: excess
+# reranks block here instead of all thrashing the CPU and timing out together.
+_RERANK_SLOTS = threading.Semaphore(config.RERANK_MAX_CONCURRENCY)
 
 
 class RerankerService:
@@ -41,7 +47,10 @@ class RerankerService:
             return [(i, 0.0) for i in range(min(top_k, len(passages)))]
         import torch  # local import keeps startup cheap when reranker disabled
         pairs = [[query, p[:2000]] for p in passages]  # truncate to cap memory + latency
-        scores = self.model.predict(pairs, activation_fct=torch.nn.Sigmoid()).tolist()
+        # Limit concurrent CPU inference (see _RERANK_SLOTS) so simultaneous heavy requests
+        # queue briefly rather than all thrashing the cores and blowing the client timeout.
+        with _RERANK_SLOTS:
+            scores = self.model.predict(pairs, activation_fct=torch.nn.Sigmoid()).tolist()
         return sorted(enumerate(scores), key=lambda x: x[1], reverse=True)[:top_k]
 
 

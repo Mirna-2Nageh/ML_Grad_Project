@@ -24,7 +24,7 @@ from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 import config
-from app.services.preprocessing import extract_article_references
+from app.services.preprocessing import extract_article_references, normalize_arabic_indic_digits
 
 # doc_types whose body is article-numbered statute text worth splitting on المادة.
 # Case files / cassation rulings / encyclopedia entries are narrative and keep the
@@ -108,7 +108,10 @@ def chunk_document(doc: Document, start_index: int) -> List[Document]:
                 sub_texts = [c.page_content for c in splitter.split_documents([holder])]
             for txt in sub_texts:
                 md = dict(doc.metadata)
-                md["primary_article"] = art_no
+                # Normalize defensively: Python's \d matches Arabic-Indic digits too, so a
+                # doc that slipped past clean_arabic_legal_text() would otherwise store an
+                # Arabic-Indic article number (e.g. '۲۳۹') here. Keep primary_article Western.
+                md["primary_article"] = normalize_arabic_indic_digits(art_no)
                 pieces.append(Document(page_content=txt, metadata=md))
     else:
         # Narrative path: recursive character splitting (legacy behavior).

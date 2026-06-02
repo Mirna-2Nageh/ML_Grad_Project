@@ -159,7 +159,7 @@ def eval_e2e(k):
             time.sleep(SLEEP_BETWEEN_S)
         try:
             t0 = time.time()
-            r = requests.post(f"{API}/qa", json={"question": q, "k": k, "prompt_style": "restrictive"}, timeout=180)
+            r = requests.post(f"{API}/qa", json={"question": q, "k": k, "prompt_style": "restrictive"}, timeout=1200)
             r.raise_for_status()
             d = r.json()
         except Exception as e:

@@ -1,4 +1,5 @@
 """Legal Q&A endpoint."""
+import asyncio
 import time
 from typing import Optional
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form
@@ -24,6 +25,14 @@ from app.services.upload_helper import (
 from app.core.prompts import PROMPTS, SYSTEM_MESSAGES
 
 router = APIRouter()
+
+# Surfaced when the corrective cascade was stopped early by QA_CASCADE_BUDGET_S.
+# Used both as a user warning and as the signal to skip caching the (possibly
+# under-grounded) answer so a later ask can ground it fully.
+BUDGET_TRUNCATED_WARNING_AR = (
+    "تم إيقاف خطوات التحقق الإضافية لتجاوز المهلة الزمنية المحددة — "
+    "الإجابة معروضة بأفضل تحقّق متاح."
+)
 
 
 async def _run_qa(
@@ -67,7 +76,11 @@ async def _run_qa(
         )
 
     # 1. Retrieve relevant context — multi-query + domain boost when enabled.
-    contexts, sources, timing = retrieval_service.retrieve_multi_query(question, k=k)
+    # Offload the blocking CPU rerank to a thread so it doesn't block the event loop —
+    # keeps the single worker responsive to other requests during the ~tens-of-seconds rerank.
+    contexts, sources, timing = await asyncio.to_thread(
+        retrieval_service.retrieve_multi_query, question, k=k
+    )
     # If retrieval found nothing AND there's no attachment, we have no grounding
     # to work with. With an attachment, we can still answer from that alone.
     if not contexts and not has_attachment:
@@ -97,6 +110,16 @@ async def _run_qa(
     if is_llm_error(model_used):
         raise HTTPException(status_code=503, detail=LLM_ERROR_NOTICE_AR)
 
+    # Wall-clock budget for the corrective cascade below (iterative retrieval +
+    # corrective retry + rescue). The initial answer above is never gated; once
+    # total elapsed crosses the budget, no NEW corrective stage launches and we
+    # fall through to scoring the best answer so far. `budget_hit` is surfaced as
+    # a warning and suppresses caching so a later (lighter-load) ask can ground
+    # the answer fully instead of being pinned to this truncated result.
+    budget_hit = False
+    def _cascade_budget_left() -> bool:
+        return config.QA_CASCADE_BUDGET_S <= 0 or (time.time() - t0) < config.QA_CASCADE_BUDGET_S
+
     # 3. Evidence validation.
     article_pass, missing_articles = validate_evidence(answer, contexts)
 
@@ -114,8 +137,11 @@ async def _run_qa(
     ):
         seen_contexts = set(contexts)
         for next_k in [n for n in config.ITERATIVE_K_SEQUENCE if n > k]:
-            extra_contexts, extra_sources, _ = retrieval_service.retrieve_multi_query(
-                question, k=next_k,
+            if not _cascade_budget_left():
+                budget_hit = True
+                break
+            extra_contexts, extra_sources, _ = await asyncio.to_thread(
+                retrieval_service.retrieve_multi_query, question, k=next_k,
             )
             new_chunks = [c for c in extra_contexts if c not in seen_contexts]
             if not new_chunks:
@@ -147,6 +173,9 @@ async def _run_qa(
         and missing_articles
         and retry_attempts < config.RETRY_MAX_ATTEMPTS
     ):
+        if not _cascade_budget_left():
+            budget_hit = True
+            break
         retry_attempts += 1
         # Block-list grows with every attempt: if the 1st retry adds NEW bad
         # articles, the 2nd retry forbids all of them at once.
@@ -183,7 +212,9 @@ async def _run_qa(
     # answers without an index rebuild.
     rescue_attempted = False
     rescue_articles_found: list = []
-    if not article_pass and missing_articles and article_lookup_service.is_loaded:
+    if not article_pass and missing_articles and article_lookup_service.is_loaded and not _cascade_budget_left():
+        budget_hit = True
+    elif not article_pass and missing_articles and article_lookup_service.is_loaded:
         rescue_chunks, rescue_articles_found = article_lookup_service.lookup_many(
             missing_articles, max_chunks_per_article=2,
         )
@@ -269,6 +300,8 @@ async def _run_qa(
             "تم استرجاع مواد إضافية من قاعدة البيانات للتحقق من الاستشهادات (مواد: "
             + ", ".join(rescue_articles_found) + ")."
         )
+    if budget_hit:
+        warnings.append(BUDGET_TRUNCATED_WARNING_AR)
     if is_refusal:
         warnings.append("النصوص المسترجعة لا تتضمن إجابة كاملة على هذا السؤال — اعتُبر الردّ ردّ تعذّر.")
         # Confidence cap removed after eval(v5): the cap penalised borderline
@@ -321,8 +354,12 @@ async def legal_qa(req: QARequest):
         prompt_style=req.prompt_style,
     )
 
-    # Only cache real LLM answers — never errors or the input-gate refusal.
-    if config.USE_ANSWER_CACHE and resp.model not in ("error", "input_gate"):
+    # Only cache real LLM answers — never errors, the input-gate refusal, or an
+    # answer whose corrective cascade was cut short by the wall-clock budget
+    # (caching that would pin every future ask to the under-grounded result).
+    budget_truncated = BUDGET_TRUNCATED_WARNING_AR in resp.warnings
+    if (config.USE_ANSWER_CACHE and resp.model not in ("error", "input_gate")
+            and not budget_truncated):
         answer_cache.put(req.question, req.k, req.prompt_style, resp.model_dump())
     return resp
 

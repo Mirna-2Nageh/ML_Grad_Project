@@ -1,4 +1,13 @@
-"""Defense memorandum generation endpoint."""
+"""Defense memorandum generation endpoint.
+
+Runs the multi-agent pipeline (Document Analysis → Weakness Detection → Legal
+Research/Precedent Retrieval → Defense Strategy → Memorandum synthesis) when
+config.USE_AGENTIC_PIPELINE is on, falling back to the single-shot path if any agent
+fails. The agentic memo (or the single-shot memo) then passes through the same
+self-check + evidence-validation + confidence scoring as before.
+"""
+import asyncio
+import logging
 import time
 from fastapi import APIRouter, HTTPException
 
@@ -10,11 +19,32 @@ from app.services.retrieval import retrieval_service
 from app.services.llm import (
     async_call_llm, used_fallback, is_llm_error, FALLBACK_NOTICE_AR, LLM_ERROR_NOTICE_AR,
 )
-from app.services.confidence import validate_evidence, topic_match, compute_confidence
+from app.services.confidence import validate_evidence, validate_precedents, topic_match, compute_confidence
 from app.services.memo_agent import self_check_memo
+from app.services import agents
 from app.core.prompts import PROMPTS, SYSTEM_MESSAGES
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+async def _single_shot(req: DefenseRequest):
+    """Legacy single-shot path. Returns (memo, contexts, sources, model, legal_refs)."""
+    contexts, sources, _ = await asyncio.to_thread(
+        retrieval_service.retrieve, req.case_facts, k=7
+    )
+    legal_refs = "\n---\n".join(contexts)[:config.MAX_CONTEXT_CHARS]
+    prompt = PROMPTS["defense"].format(
+        case_facts=req.case_facts,
+        evidence=req.evidence or "لم تُقدَّم أدلة إضافية بخلاف ما ورد في الوقائع.",
+        defendant_statement=req.defendant_statement or "لم يُقدَّم بيان منفصل للمتهم.",
+        weaknesses=req.weaknesses or "لم يتم تحديد نقاط ضعف محددة",
+        legal_refs=legal_refs,
+    )
+    memo, _, model = await async_call_llm(
+        prompt, feature="defense", system_msg=SYSTEM_MESSAGES["defense"], max_tokens=2048,
+    )
+    return memo, contexts, sources, model, legal_refs
 
 
 @router.post(
@@ -25,20 +55,33 @@ router = APIRouter()
 )
 async def generate_defense(req: DefenseRequest):
     t0 = time.time()
+    extra_warnings: list = []
+    pipeline_used = False
+    timeline = None
+    weaknesses_detected = None
 
-    contexts, sources, _ = retrieval_service.retrieve(req.case_facts, k=7)
-    legal_refs = "\n---\n".join(contexts)[:config.MAX_CONTEXT_CHARS]
+    if config.USE_AGENTIC_PIPELINE:
+        try:
+            case_facts = req.case_facts
+            if req.weaknesses:
+                case_facts = f"{case_facts}\n\n[نقاط ضعف يقترحها المستخدم]:\n{req.weaknesses}"
+            res = await agents.run_defense_pipeline(
+                case_facts, req.evidence or "", req.defendant_statement or "",
+            )
+            memorandum, contexts, sources, model_used = (
+                res["text"], res["contexts"], res["sources"], res["model"],
+            )
+            legal_refs = "\n---\n".join(contexts)[:config.MAX_CONTEXT_CHARS]
+            pipeline_used = True
+            timeline = (res.get("analysis") or {}).get("timeline")
+            weaknesses_detected = res.get("weaknesses")
+        except agents.AgentPipelineError as e:
+            logger.warning(f"Agentic defense pipeline failed ({e}); falling back to single-shot")
+            extra_warnings.append("تعذّر تشغيل خط الصياغة متعدد الوكلاء؛ تم استخدام الصياغة المباشرة.")
+            memorandum, contexts, sources, model_used, legal_refs = await _single_shot(req)
+    else:
+        memorandum, contexts, sources, model_used, legal_refs = await _single_shot(req)
 
-    prompt = PROMPTS["defense"].format(
-        case_facts=req.case_facts,
-        evidence=req.evidence or "لم تُقدَّم أدلة إضافية بخلاف ما ورد في الوقائع.",
-        defendant_statement=req.defendant_statement or "لم يُقدَّم بيان منفصل للمتهم.",
-        weaknesses=req.weaknesses or "لم يتم تحديد نقاط ضعف محددة",
-        legal_refs=legal_refs,
-    )
-    memorandum, _, model_used = await async_call_llm(
-        prompt, feature="defense", system_msg=SYSTEM_MESSAGES["defense"], max_tokens=2048,
-    )
     if is_llm_error(model_used):
         raise HTTPException(status_code=503, detail=LLM_ERROR_NOTICE_AR)
 
@@ -62,13 +105,21 @@ async def generate_defense(req: DefenseRequest):
         topic_match_hit=topic_hit,
     )
 
-    warnings = []
+    warnings = list(extra_warnings)
     if not article_pass:
         warnings.append(
             "تنبيه: المواد التالية مذكورة في المذكرة لكنها غير موجودة في المراجع المسترجعة: "
             + ", ".join(missing)
         )
         confidence = max(0.0, round(confidence - 0.3, 3))
+    # Precedent-citation grounding: flag طعن/نقض numbers not found in the retrieved context.
+    prec_pass, missing_precedents = validate_precedents(memorandum, contexts)
+    if not prec_pass:
+        warnings.append(
+            "تنبيه: السوابق القضائية التالية مذكورة في المذكرة لكنها غير موجودة في المراجع المسترجعة "
+            "(قد تكون غير دقيقة): " + "، ".join(missing_precedents)
+        )
+        confidence = max(0.0, round(confidence - 0.2, 3))
     if confidence < config.CONFIDENCE_THRESHOLD_CLARIFY:
         warnings.append("ثقة المذكرة منخفضة — يُنصح بمراجعة بشرية قبل الاعتماد عليها.")
     if used_fallback(model_used):
@@ -84,4 +135,7 @@ async def generate_defense(req: DefenseRequest):
         latency_ms=round((time.time() - t0) * 1000, 1),
         model=model_used,
         self_check_revisions=self_check_revisions,
+        pipeline=pipeline_used,
+        timeline=timeline,
+        weaknesses_detected=weaknesses_detected,
     )

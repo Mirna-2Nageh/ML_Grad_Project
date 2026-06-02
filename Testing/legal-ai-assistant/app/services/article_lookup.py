@@ -27,6 +27,7 @@ import logging
 from typing import Dict, List, Optional, Tuple
 
 import config
+from app.services.preprocessing import normalize_arabic_indic_digits
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +60,9 @@ class ArticleLookupService:
         # First pass: collect raw indices per article.
         for i, c in enumerate(chunks):
             for art in (c.metadata.get("referenced_articles") or []):
-                key = str(art).strip()
+                # Normalize to Western digits so legacy Arabic-Indic keys (e.g. '۲۳۹')
+                # match queries, which arrive Western-normalized from validate_evidence.
+                key = normalize_arabic_indic_digits(str(art).strip())
                 if not key:
                     continue
                 idx.setdefault(key, []).append(i)
@@ -136,7 +139,7 @@ class ArticleLookupService:
         """
         if not self._loaded or not self._chunks:
             return []
-        key = str(article_no).strip()
+        key = normalize_arabic_indic_digits(str(article_no).strip())
         if not key or key not in self._index:
             return []
         out: List[Tuple[int, str]] = []

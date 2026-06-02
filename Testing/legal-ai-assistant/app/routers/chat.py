@@ -2,6 +2,7 @@
 Chat endpoint — Main conversation interface with session management.
 Two flavors: /chat (request-response) and /chat/stream (SSE token stream for frontends).
 """
+import asyncio
 import json
 import time
 import uuid
@@ -87,7 +88,10 @@ async def chat(req: ChatRequest):
     history_text = session.format_history()
 
     # 2. Retrieve relevant legal context — multi-query + domain boost when enabled.
-    contexts, sources, _ = retrieval_service.retrieve_multi_query(req.message, k=req.k)
+    # Offload blocking CPU rerank off the event loop (single-worker concurrency).
+    contexts, sources, _ = await asyncio.to_thread(
+        retrieval_service.retrieve_multi_query, req.message, k=req.k
+    )
 
     # 2b. If the session has documents attached, prepend them to the context
     # block so the LLM (and the evidence validator) treat them as authoritative
@@ -97,7 +101,12 @@ async def chat(req: ChatRequest):
     if attachments_block:
         contexts = [attachments_block] + contexts
 
-    context_str = "\n---\n".join(contexts) if contexts else "لا يوجد سياق قانوني متاح."
+    # Cap context to MAX_CONTEXT_CHARS (mirrors qa.py): the full retrieved context
+    # + neighbor expansion + expert rules + attachments was previously sent uncapped,
+    # producing ~40k-char prompts that exceed the OpenRouter qwen-72b provider's 32k
+    # token window → HTTP 400 → silent fallback to Gemini. attachments_block is part
+    # of `contexts` here, so it's bounded by the same cap.
+    context_str = "\n---\n".join(contexts)[:config.MAX_CONTEXT_CHARS] if contexts else "لا يوجد سياق قانوني متاح."
 
     # 3. Build prompt with context + history
     prompt = PROMPTS["chat"].format(
@@ -126,8 +135,8 @@ async def chat(req: ChatRequest):
     if not article_pass and missing and config.USE_ITERATIVE_RETRIEVAL:
         seen_contexts = set(contexts)
         for next_k in [n for n in config.ITERATIVE_K_SEQUENCE if n > req.k]:
-            extra_contexts, extra_sources, _ = retrieval_service.retrieve_multi_query(
-                req.message, k=next_k,
+            extra_contexts, extra_sources, _ = await asyncio.to_thread(
+                retrieval_service.retrieve_multi_query, req.message, k=next_k,
             )
             new_chunks = [c for c in extra_contexts if c not in seen_contexts]
             if not new_chunks:
@@ -356,12 +365,16 @@ async def chat_stream(req: ChatRequest):
     history_text = session.format_history()
 
     # 2. Retrieve (synchronous, fast — runs before streaming starts)
-    contexts, sources, _ = retrieval_service.retrieve(req.message, k=req.k)
+    contexts, sources, _ = await asyncio.to_thread(
+        retrieval_service.retrieve, req.message, k=req.k
+    )
     # Prepend any documents attached to this session so the LLM sees them every turn.
     attachments_block = session.format_attachments()
     if attachments_block:
         contexts = [attachments_block] + contexts
-    context_str = "\n---\n".join(contexts) if contexts else "لا يوجد سياق قانوني متاح."
+    # Cap context (mirrors qa.py + non-streaming /chat) so the prompt stays within the
+    # OpenRouter qwen-72b provider's 32k token window — streaming is OpenRouter-only.
+    context_str = "\n---\n".join(contexts)[:config.MAX_CONTEXT_CHARS] if contexts else "لا يوجد سياق قانوني متاح."
 
     # 3. Build prompt
     prompt = PROMPTS["chat"].format(

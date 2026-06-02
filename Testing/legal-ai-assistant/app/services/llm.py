@@ -53,19 +53,24 @@ def primary_model() -> str:
         return config.CEREBRAS_MODEL
     if config.LLM_PROVIDER == "groq" and config.GROQ_API_KEYS:
         return config.GROQ_MODEL
+    if config.LLM_PROVIDER == "openrouter" and config.OPENROUTER_API_KEYS:
+        return config.LLM_MODEL
     return "gemini-2.5-flash"
 
 
 def _oai_provider_chain(feature: str):
     """Ordered OpenAI-compatible providers — configured-primary first, then backups —
     each as (base_url, keys, model, label). Only providers that actually have a key are
-    included. OpenRouter is handled separately so it stays the final fallback."""
+    included. OpenRouter is selectable as the configured primary (LLM_PROVIDER=openrouter);
+    otherwise it's omitted here and handled separately as the final fallback."""
     providers = {
         "groq": (config.GROQ_BASE_URL, config.GROQ_API_KEYS,
                  config.MODEL_BY_FEATURE.get(feature, config.GROQ_MODEL), "Groq"),
         "cerebras": (config.CEREBRAS_BASE_URL, config.CEREBRAS_API_KEYS,
                      config.CEREBRAS_MODEL, "Cerebras"),
         "xai": (config.XAI_BASE_URL, config.XAI_API_KEYS, config.XAI_MODEL, "xAI"),
+        "openrouter": (config.OPENROUTER_BASE_URL, config.OPENROUTER_API_KEYS,
+                       config.OPENROUTER_MODEL_BY_FEATURE.get(feature, config.LLM_MODEL), "OpenRouter"),
     }
     order = []
     if config.LLM_PROVIDER in providers:
@@ -355,8 +360,9 @@ def call_llm(
         text, model = gemini_res
         return text, time.time() - t0, model
 
-    # OpenRouter (last-resort backup).
-    if config.OPENROUTER_API_KEYS and not _too_big("OpenRouter"):
+    # OpenRouter (last-resort backup, unless it already ran first as the configured primary).
+    if (config.OPENROUTER_API_KEYS and config.LLM_PROVIDER != "openrouter"
+            and not _too_big("OpenRouter")):
         text = _try_openai_chat(
             config.OPENROUTER_BASE_URL, config.OPENROUTER_API_KEYS, config.LLM_MODEL,
             prompt, system_msg, temp, max_tokens, "OpenRouter",
@@ -422,7 +428,7 @@ async def async_stream_llm(
         (base_url, keys, (model or chain_model), label)
         for (base_url, keys, chain_model, label) in _oai_provider_chain(feature)
     ]
-    if config.OPENROUTER_API_KEYS:
+    if config.OPENROUTER_API_KEYS and config.LLM_PROVIDER != "openrouter":
         attempts.append((config.OPENROUTER_BASE_URL, config.OPENROUTER_API_KEYS, model or config.LLM_MODEL, "OpenRouter"))
 
     for base_url, keys, stream_model, label in attempts:
