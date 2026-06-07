@@ -37,8 +37,8 @@ EMBED_PROVIDER = os.getenv("EMBED_PROVIDER", "google") # 'google' or 'openai' (O
 # Primary LLM provider: "gemini" | "groq" | "cerebras" | "xai" (all OpenAI-compatible
 # except gemini). The chosen primary is tried first, then the other OpenAI-compatible
 # backups (groq → cerebras → xai), then Gemini (multi-project), then OpenRouter.
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "gemini").lower()
-LLM_MODEL = os.getenv("LLM_MODEL", "qwen/qwen-2.5-72b-instruct")  # OpenRouter fallback model
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openrouter").lower()  # OpenRouter is the default for ALL features
+LLM_MODEL = os.getenv("LLM_MODEL", "qwen/qwen-2.5-72b-instruct")  # primary OpenRouter model (all features)
 
 # xAI Grok (OpenAI-compatible API at https://api.x.ai/v1)
 XAI_API_KEYS = _key_list("XAI_API_KEY", "XAI_API_KEYS")
@@ -79,6 +79,14 @@ MODEL_BY_FEATURE = {
     "summarize": GROQ_MODEL,
     "qa": GROQ_MODEL,
     "default": GROQ_MODEL,
+}
+# OpenRouter is the DEFAULT provider for every feature (LLM_PROVIDER=openrouter).
+# Per-feature OpenRouter model; every feature defaults to LLM_MODEL (qwen-2.5-72b).
+# Override one feature with env OPENROUTER_MODEL_<FEATURE> (e.g. OPENROUTER_MODEL_SUMMARIZE)
+# to point it at a different OpenRouter model without affecting the others.
+OPENROUTER_MODEL_BY_FEATURE = {
+    f: os.getenv(f"OPENROUTER_MODEL_{f.upper()}", LLM_MODEL)
+    for f in ("defense", "weakness", "forensic", "summarize", "qa", "chat", "compact", "default")
 }
 # Cap Gemini 2.5 Flash's hidden thinking tokens. Unbounded (default) thinking
 # eats max_output_tokens and truncates the visible answer mid-sentence.
@@ -161,6 +169,12 @@ NORMALIZE_TA_MARBUTA = False
 USE_RERANKER = os.getenv("USE_RERANKER", "True").lower() == "true"
 RERANKER_MODEL = os.getenv("RERANKER_MODEL", "BAAI/bge-reranker-v2-m3")
 RETRIEVAL_K_RERANK = int(os.getenv("RETRIEVAL_K_RERANK", "60"))  # candidates fed to reranker (top-N from RRF) — wider = ranks over more of the corpus
+# Max concurrent cross-encoder reranks. The rerank is CPU-bound and one rerank already
+# saturates the cores, so letting many run at once just thrashes the CPU and pushes every
+# in-flight request past the client timeout. Cap concurrency so excess requests queue
+# briefly instead of all slowing down together. Reranks run in threadpool threads (handlers
+# offload via asyncio.to_thread), so this is enforced with a threading.Semaphore.
+RERANK_MAX_CONCURRENCY = int(os.getenv("RERANK_MAX_CONCURRENCY", "2"))
 
 # ──────────────────────────────────────────────
 # Confidence Scoring (Phase 1 heuristic)
@@ -205,18 +219,25 @@ DOMAIN_BOOST_WEIGHT = float(os.getenv("DOMAIN_BOOST_WEIGHT", "0.05"))
 # Smarter retry on hallucinated citations:
 #   - skip when no articles cited (a refusal has nothing to fix)
 #   - up to N attempts, each one passes the growing block-list of bad articles
-# 1 retry is the sweet spot on Groq's free tier: a 2nd retry blows the 6000
-# token-per-minute budget (~4k tokens per call), causing 429s that cascade into
-# fallbacks and stalled requests. Bump to 2+ only on paid tiers.
+# Kept at 1 even though OpenRouter (the primary) has no token-per-minute cap:
+# each retry is another ~15s OpenRouter LLM call, so a 2nd retry is now a
+# latency cost, not a token-budget one. (Historically 1 was forced by Groq's
+# 6000 TPM free-tier budget — 429s cascading into fallbacks.) Bump only if a
+# faster LLM endpoint makes the extra call cheap.
 RETRY_MAX_ATTEMPTS = int(os.getenv("RETRY_MAX_ATTEMPTS", "1"))
 
 # Iterative retrieval: when the validate→retry→rescue pipeline still fails
 # article validation OR returns a low-confidence refusal, re-run the whole
 # pipeline at a larger k. Each step in the sequence is tried at most once per
 # request, and we stop as soon as one of them produces a passing answer.
-# Trade-off: doubles/triples latency on hard questions to recover them rather
-# than returning a hallucination warning. Easy queries (those that pass on
-# the first k) cost nothing extra.
+# Trade-off: each step is a multi-query rerank pass (CPU, ~20-40s), so the
+# sequence length directly drives worst-case latency on hard questions.
+# Capped to a SINGLE expansion ("10,18" → only the 18 step fires for the
+# default k=10): with OpenRouter (~15s/LLM call) as primary, the old second
+# expansion to 28 stacked another rerank pass that pushed the worst case past
+# the 180s client timeout (see the `bribery` query). One expansion still
+# recovers most hard queries; widen the env var back to "10,18,28" only if a
+# faster (GPU) retrieval backend makes the extra pass cheap.
 USE_ITERATIVE_RETRIEVAL = os.getenv("USE_ITERATIVE_RETRIEVAL", "True").lower() == "true"
 def _parse_int_list(env_val: str, fallback) -> list:
     try:
@@ -225,8 +246,46 @@ def _parse_int_list(env_val: str, fallback) -> list:
     except ValueError:
         return fallback
 ITERATIVE_K_SEQUENCE = _parse_int_list(
-    os.getenv("ITERATIVE_K_SEQUENCE", "10,18,28"), [10, 18, 28]
+    os.getenv("ITERATIVE_K_SEQUENCE", "10,18"), [10, 18]
 )
+# Wall-clock budget (seconds) for the corrective cascade — iterative retrieval +
+# corrective retry + article-lookup rescue. The INITIAL retrieve+answer always
+# runs; once total request time crosses this budget, no NEW corrective stage is
+# launched and we return the best-grounded answer so far. This bounds worst-case
+# latency under the client timeout regardless of how slow the (OpenRouter) LLM is:
+# each in-flight stage can still finish, so worst case ≈ budget + one stage
+# (~30-40s). Sized for the ~180s client timeout with margin. Set 0 to disable.
+QA_CASCADE_BUDGET_S = float(os.getenv("QA_CASCADE_BUDGET_S", "90"))
+
+# ──────────────────────────────────────────────
+# Agentic pipeline (Document Analysis → Weakness Detection → Legal Research →
+# Precedent Retrieval → Defense Strategy → Memorandum). Replaces the single-shot
+# /weakness and /defense path with a multi-agent, retrieval-per-weakness flow.
+# Falls back to the single-shot path automatically if any agent fails.
+# ──────────────────────────────────────────────
+USE_AGENTIC_PIPELINE = os.getenv("USE_AGENTIC_PIPELINE", "True").lower() == "true"
+# Cap on how many detected weaknesses get their own research+precedent retrieval.
+# Each weakness costs ~2 retrievals (~CPU rerank); bounded so a memo stays within
+# the client timeout. The detector still LISTS all weaknesses; only the top-N are
+# researched in depth (the rest are carried with their hypothesis text).
+AGENT_MAX_WEAKNESSES = int(os.getenv("AGENT_MAX_WEAKNESSES", "6"))
+# ONE retrieval per weakness: a single pool that yields both doctrine/statute and any
+# court-precedent chunks (split by doc_type after retrieval). On a CPU-bound reranker,
+# one retrieval per weakness keeps a full memo near ~2-3 min instead of ~10.
+AGENT_RESEARCH_K = int(os.getenv("AGENT_RESEARCH_K", "6"))      # chunks per weakness (doctrine + precedents)
+# Output token caps per agent (intermediate agents emit compact JSON; only the
+# final memo/analysis needs room).
+AGENT_ANALYSIS_MAX_TOKENS = int(os.getenv("AGENT_ANALYSIS_MAX_TOKENS", "2048"))
+AGENT_DETECT_MAX_TOKENS = int(os.getenv("AGENT_DETECT_MAX_TOKENS", "2048"))
+AGENT_STRATEGY_MAX_TOKENS = int(os.getenv("AGENT_STRATEGY_MAX_TOKENS", "2048"))
+AGENT_SYNTH_MAX_TOKENS = int(os.getenv("AGENT_SYNTH_MAX_TOKENS", "4096"))
+# Doc-type substrings that mark a chunk as a court precedent (Court of Cassation).
+AGENT_PRECEDENT_DOC_TYPES = [
+    s.strip() for s in os.getenv(
+        "AGENT_PRECEDENT_DOC_TYPES", "cassation,naqd,نقض,criminal_case,ruling"
+    ).split(",") if s.strip()
+]
+
 # Programmatic post-processing of the LLM answer: strip casual openings
 # ("حسناً"، "بالتأكيد"...) and rewrite the leaky template phrase
 # "المادة المطلوبة غير متوفرة في السياق المقدم" if the LLM embedded it mid-clause.
@@ -269,10 +328,12 @@ BENCHMARK_MODELS = {
 # ──────────────────────────────────────────────
 # API Limits
 # ──────────────────────────────────────────────
-# Context budget: trimmed so a full request (input + output reservation) fits free-tier
-# token-per-minute caps (e.g. Groq 8B TPM=6000). Expert rules + top chunks still fit.
-MAX_CONTEXT_CHARS = 6000
+# Context budget. Was trimmed to 6000 to fit free-tier token-per-minute caps (e.g. Groq 8B
+# TPM=6000); with OpenRouter (qwen-2.5-72b, 32k window, usage-billed) as the primary provider
+# that pressure is gone, so this is relaxed to fit more reranked chunks per answer. Oversized
+# prompts still fall through to a larger-context provider via PROVIDER_MAX_PROMPT_CHARS.
+MAX_CONTEXT_CHARS = int(os.getenv("MAX_CONTEXT_CHARS", "12000"))
 MAX_INPUT_CHARS = 50000
-# Output token cap for short-answer features (QA/chat). Answers are typically 200-800 chars,
-# so a 4096 reservation needlessly doubled per-request token cost on free tiers.
-LLM_MAX_TOKENS_QA = int(os.getenv("LLM_MAX_TOKENS_QA", "1024"))
+# Output token cap for short-answer features (QA/chat). Answers are typically 200-800 chars;
+# 2048 leaves generous headroom for longer reasoned replies without the wasteful 4096 default.
+LLM_MAX_TOKENS_QA = int(os.getenv("LLM_MAX_TOKENS_QA", "2048"))

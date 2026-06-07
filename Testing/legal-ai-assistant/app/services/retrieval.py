@@ -18,11 +18,33 @@ from app.services.preprocessing import (
     preprocess_arabic_for_bm25,
     classify_query_domain,
     expand_query_synonyms,
+    normalize_arabic_indic_digits,
     DOMAIN_TO_DOC_TYPES,
 )
 from app.services.reranker import reranker_service
 
 logger = logging.getLogger(__name__)
+
+
+def _norm_article(a):
+    """Normalize one article number to Western digits, or None. Legacy chunks in the
+    live index can carry Arabic-Indic article numbers (e.g. '۲۳۹') because they were
+    built before digit-normalization; normalize at serving time so the wire contract
+    always reports Western digits without needing an index rebuild."""
+    if a in (None, ""):
+        return None
+    return normalize_arabic_indic_digits(str(a))
+
+
+def _norm_articles(items):
+    """Normalize + dedupe a list of article numbers to Western-digit strings, order-preserving."""
+    out, seen = [], set()
+    for a in items or []:
+        n = _norm_article(a)
+        if n and n not in seen:
+            seen.add(n)
+            out.append(n)
+    return out
 
 
 class GoogleEmbedding:
@@ -375,7 +397,7 @@ class RetrievalService:
             contexts.append(expanded_text)
             seen_indices.add(i)
 
-            referenced = meta.get("referenced_articles") or []
+            referenced = _norm_articles(meta.get("referenced_articles"))
             # Legacy-key shim: old indices use file_name/category/subcategory/article_number.
             # New indices use filename/doc_type/legal_topic/referenced_articles. Read both.
             filename = meta.get("filename") or meta.get("file_name") or meta.get("display_name", "")
@@ -384,7 +406,12 @@ class RetrievalService:
             legal_topic = meta.get("legal_topic", "") or (
                 meta.get("subcategory", "") if meta.get("subcategory") not in (None, "", "عام") else ""
             )
-            article = (referenced[0] if referenced else None) or (meta.get("article_number") or None)
+            # Prefer the article this chunk *is* (set by article-aware chunking) over
+            # the first article it merely references; fall back to legacy article_number.
+            # All normalized to Western digits (legacy chunks may carry Arabic-Indic).
+            article = _norm_article(meta.get("primary_article")) \
+                or (referenced[0] if referenced else None) \
+                or _norm_article(meta.get("article_number"))
             sources.append({
                 "filename": filename,
                 "source": meta.get("source") or meta.get("file_name", ""),
@@ -392,7 +419,7 @@ class RetrievalService:
                 "legal_category": legal_category,
                 "legal_topic": legal_topic,
                 "article": article,
-                "referenced_articles": list(referenced),
+                "referenced_articles": referenced,
                 "page": meta.get("page"),
                 "retrieval_score": round(dense_scores_by_idx.get(i, 0.0), 4),
                 "rerank_score": round(rerank_scores_by_idx.get(i, 0.0), 4),
@@ -583,14 +610,19 @@ class RetrievalService:
             contexts.append(expanded_text)
             seen.add(i)
 
-            referenced = meta.get("referenced_articles") or []
+            referenced = _norm_articles(meta.get("referenced_articles"))
             filename = meta.get("filename") or meta.get("file_name") or meta.get("display_name", "")
             doc_type = meta.get("doc_type") or meta.get("category", "")
             legal_category = meta.get("legal_category") or meta.get("category", "")
             legal_topic = meta.get("legal_topic", "") or (
                 meta.get("subcategory", "") if meta.get("subcategory") not in (None, "", "عام") else ""
             )
-            article = (referenced[0] if referenced else None) or (meta.get("article_number") or None)
+            # Prefer the article this chunk *is* (set by article-aware chunking) over
+            # the first article it merely references; fall back to legacy article_number.
+            # All normalized to Western digits (legacy chunks may carry Arabic-Indic).
+            article = _norm_article(meta.get("primary_article")) \
+                or (referenced[0] if referenced else None) \
+                or _norm_article(meta.get("article_number"))
             sources.append({
                 "filename": filename,
                 "source": meta.get("source") or meta.get("file_name", ""),
@@ -598,7 +630,7 @@ class RetrievalService:
                 "legal_category": legal_category,
                 "legal_topic": legal_topic,
                 "article": article,
-                "referenced_articles": list(referenced),
+                "referenced_articles": referenced,
                 "page": meta.get("page"),
                 "retrieval_score": round(dense_scores_by_idx.get(i, 0.0), 4),
                 "rerank_score": round(rerank_scores_by_idx.get(i, 0.0), 4),

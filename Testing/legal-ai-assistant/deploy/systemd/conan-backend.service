@@ -1,0 +1,16 @@
+[Unit]
+Description=Conan — FastAPI backend (Egyptian Criminal Law RAG)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/marno000onaaa/Desktop/ML_Grad_Project/Testing/legal-ai-assistant
+ExecStart=/home/marno000onaaa/Desktop/ML_Grad_Project/Testing/legal-ai-assistant/LaW/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+Restart=on-failure
+RestartSec=5
+# Model + index load can take ~30s; give it room before systemd considers it failed.
+TimeoutStartSec=300
+
+[Install]
+WantedBy=default.target

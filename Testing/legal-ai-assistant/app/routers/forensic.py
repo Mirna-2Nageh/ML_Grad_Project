@@ -5,6 +5,7 @@ flag internal contradictions, evidence/fact mismatches, unmet legal elements, an
 This is documentary/logical analysis (not physical forensics). The `evidence` field is
 free text today; it will be fed from the per-case evidence store once uploads land.
 """
+import asyncio
 import time
 from fastapi import APIRouter, HTTPException
 
@@ -42,7 +43,9 @@ async def forensic_analysis(req: ForensicRequest):
 
     # Retrieve law relevant to both the facts and the evidence.
     retrieval_query = (req.case_facts + " " + req.evidence).strip()
-    contexts, sources, _ = retrieval_service.retrieve(retrieval_query, k=7)
+    contexts, sources, _ = await asyncio.to_thread(
+        retrieval_service.retrieve, retrieval_query, k=7
+    )
     legal_refs = "\n---\n".join(contexts)[:config.MAX_CONTEXT_CHARS]
 
     prompt = PROMPTS["forensic"].format(

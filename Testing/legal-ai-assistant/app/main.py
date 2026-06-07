@@ -94,8 +94,41 @@ def root():
     return {
         "service": "كونان — Legal AI Assistant",
         "version": "2.0.0",
+        "message": (
+            f"All API endpoints live under {API_PREFIX}. A path without that prefix "
+            f"(e.g. /health or /qa) returns 404. Open /docs for the full interactive spec."
+        ),
+        "api_base": API_PREFIX,
         "docs": "/docs",
-        "health": f"{API_PREFIX}/health",
-        "chat": f"{API_PREFIX}/chat",
-        "ingest": f"{API_PREFIX}/ingest",
+        "openapi": "/openapi.json",
+        "endpoints": {
+            "health":    f"GET  {API_PREFIX}/health",
+            "qa":        f"POST {API_PREFIX}/qa",
+            "chat":      f"POST {API_PREFIX}/chat",
+            "summarize": f"POST {API_PREFIX}/summarize",
+            "weakness":  f"POST {API_PREFIX}/weakness",
+            "defense":   f"POST {API_PREFIX}/defense",
+            "forensic":  f"POST {API_PREFIX}/forensic",
+            "parse":     f"POST {API_PREFIX}/parse",
+            "ingest":    f"POST {API_PREFIX}/ingest",
+        },
     }
+
+
+@app.exception_handler(404)
+async def not_found_hint(request, exc):
+    """Return a helpful pointer instead of a bare 404 for unknown paths."""
+    from fastapi.responses import JSONResponse
+    detail = getattr(exc, "detail", "Not Found")
+    return JSONResponse(
+        status_code=404,
+        content={
+            "detail": detail,
+            "hint": (
+                f"This path was not found. All endpoints are under {API_PREFIX} "
+                f"(e.g. {API_PREFIX}/health, {API_PREFIX}/qa). See /docs for the full list."
+            ),
+            "api_base": API_PREFIX,
+            "docs": "/docs",
+        },
+    )

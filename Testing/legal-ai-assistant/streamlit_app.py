@@ -9,6 +9,10 @@ import pandas as pd
 
 # ─── Configuration ───
 API_BASE = "http://localhost:8000/api/v1"
+# Max time to wait for a response from an LLM-backed endpoint (qa/chat/summarize/
+# weakness/defense). Set to 20 min so slow concurrent/heavy requests aren't cut off
+# by the client before the backend finishes.
+RESPONSE_TIMEOUT = 1200  # seconds (20 min)
 
 st.set_page_config(
     page_title="⚖️ المساعد القانوني الذكي",
@@ -323,11 +327,11 @@ with tab1:
                             )
                         elif pasted_text and pasted_text.strip():
                             form_data["text"] = (None, pasted_text)
-                        r = requests.post(f"{API_BASE}/qa/upload", files=form_data, timeout=180)
+                        r = requests.post(f"{API_BASE}/qa/upload", files=form_data, timeout=RESPONSE_TIMEOUT)
                     else:
                         r = requests.post(f"{API_BASE}/qa", json={
                             "question": question, "k": k_val
-                        }, timeout=180)
+                        }, timeout=RESPONSE_TIMEOUT)
 
                     if r.status_code >= 400:
                         st.error(_friendly_error(r))
@@ -383,7 +387,7 @@ with tab2:
         else:
             with st.spinner("جاري التلخيص..."):
                 try:
-                    r = requests.post(f"{API_BASE}/summarize", json={"text": text}, timeout=180)
+                    r = requests.post(f"{API_BASE}/summarize", json={"text": text}, timeout=RESPONSE_TIMEOUT)
                     if r.status_code >= 400:
                         st.error(_friendly_error(r))
                     else:
@@ -449,7 +453,7 @@ with tab3:
                         payload["evidence"] = weak_evidence
                     if weak_defendant and weak_defendant.strip():
                         payload["defendant_statement"] = weak_defendant
-                    r = requests.post(f"{API_BASE}/weakness", json=payload, timeout=180)
+                    r = requests.post(f"{API_BASE}/weakness", json=payload, timeout=RESPONSE_TIMEOUT)
                     if r.status_code >= 400:
                         st.error(_friendly_error(r))
                     else:
@@ -521,7 +525,7 @@ with tab4:
                         payload["evidence"] = def_evidence
                     if def_defendant and def_defendant.strip():
                         payload["defendant_statement"] = def_defendant
-                    r = requests.post(f"{API_BASE}/defense", json=payload, timeout=180)
+                    r = requests.post(f"{API_BASE}/defense", json=payload, timeout=RESPONSE_TIMEOUT)
                     if r.status_code >= 400:
                         st.error(_friendly_error(r))
                     else:
@@ -566,7 +570,7 @@ with tab5:
             for i, q in enumerate(questions):
                 try:
                     t0 = time.time()
-                    r = requests.post(f"{API_BASE}/qa", json={"question": q, "k": 7}, timeout=180)
+                    r = requests.post(f"{API_BASE}/qa", json={"question": q, "k": 7}, timeout=RESPONSE_TIMEOUT)
                     total_t = (time.time() - t0) * 1000
                     data = r.json()
                     factors = data.get("confidence_factors") or {}
