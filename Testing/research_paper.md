@@ -1,14 +1,16 @@
-# Conan: A Hallucination-Resistant Retrieval-Augmented Generation Pipeline for Egyptian Criminal Law in Arabic
+# Conan: A Hallucination-Resistant, Agentic Retrieval-Augmented Generation Framework for Arabic Legal Reasoning in Egyptian Criminal Law
 
 **Authors:** Mirna Nageh, Wageh Mostafa, Seif Sherif, Mariam Mohamed, Mayar Mohammed
+
+**Affiliation:** Faculty of Computers & Artificial Intelligence, Capital (Helwan) University, Egypt
 
 ---
 
 ## Abstract
 
-Retrieval-Augmented Generation (RAG) has become the de-facto architecture for grounding large language models (LLMs) on domain-specific knowledge, yet its application to Arabic legal information retrieval continues to suffer from two well-documented failure modes: hallucinated statutory citations and the LLM's tendency to confabulate when retrieval surfaces topically-related but legally-inadequate context. In this work we present **Conan**, a production-grade Arabic legal assistant for the Egyptian Criminal Code (قانون العقوبات) and the Code of Criminal Procedure (قانون الإجراءات الجنائية). Starting from a strong hybrid-retrieval baseline (FAISS dense search + BM25 sparse search fused via Reciprocal Rank Fusion, with cross-encoder reranking), we introduce a multi-layered grounding pipeline that drives the rate of hallucinated article-number citations from a baseline of 28.6 % down to 0.0 % on a 28-question Arabic legal benchmark. Our contributions span six interlocking mechanisms: (i) an input-gating filter that rejects fragmentary user inputs before retrieval, (ii) a strict citation-grounding prompt regime separating substantive from procedural law, (iii) a corrective LLM retry with an explicit block-list of forbidden article numbers, (iv) an **article-lookup rescue** that indexes 1,494 distinct Egyptian-law articles from chunk metadata and uses them as a second-chance grounding source, (v) deterministic answer post-processing that rewrites awkward template-leakage phrases and strips persona-breaking openers, and (vi) **iterative retrieval** that auto-expands the k-window when validation fails — without requiring an additional LLM call. We further introduce a document-upload subsystem supporting three retention semantics — per-question attachment, session-attached document, and permanent corpus ingestion — covering `.txt`, `.pdf`, and `.docx` formats. The complete system, evaluated on a 28-question benchmark covering substantive and procedural Egyptian criminal law, achieves a **100 % evidence-validation pass rate with zero hallucinations**, an 8-fold improvement over the baseline. As a further contribution we release the underlying corpus — 933 legacy-format source files manually OCR-cleaned into 1,057 UTF-8 documents (47,028 indexed chunks) — publicly on HuggingFace. Beyond single-question Q&A, the system provides case-analysis endpoints — weakness analysis, defence-memorandum drafting with an agentic self-check, and forensic-consistency checking — governed by an expert-derived procedural-defence reasoning checklist paired with a grounding-safe few-shot exemplar, and is deployed as a production FastAPI service with multi-provider failover, big-context routing, persistent multi-turn sessions, token streaming, automated watch-folder ingestion with hot-reload, and a documented .NET integration contract. Finally, we report a retrieval-quality optimisation phase targeting the retrieval ceiling that bounds answer correctness — article-aware chunking that keeps each statute article intact in one retrievable unit (live), a widened cross-encoder candidate pool (live), and a BGE-M3 embedding upgrade prepared behind configuration — together with a scored evaluation harness reporting recall@k, article-recall, primary-hit@k, MRR, hallucination rate, abstention, and confidence calibration over a labeled gold set, so every change is measurable. We also report a practical systems finding: on CPU-only hardware the highest-quality embedder can be infeasible to *build* without accelerator access, making the embedder a joint quality/operability choice. We release the system, the evaluation harness, and a multi-version trail documenting the incremental improvements.
+Retrieval-Augmented Generation (RAG) has become the de-facto architecture for grounding large language models (LLMs) on domain-specific knowledge, yet its application to Arabic legal information retrieval continues to suffer from two well-documented failure modes: hallucinated statutory citations and the LLM's tendency to confabulate when retrieval surfaces topically-related but legally-inadequate context. In this work we present **Conan**, a production-grade Arabic legal assistant for the Egyptian Criminal Code (قانون العقوبات) and the Code of Criminal Procedure (قانون الإجراءات الجنائية). Starting from a strong hybrid-retrieval baseline (FAISS dense search + BM25 sparse search fused via Reciprocal Rank Fusion, with cross-encoder reranking), we introduce a multi-layered grounding pipeline that drives the rate of hallucinated article-number citations from a baseline of 28.6 % down to 0.0 % on a 28-question Arabic legal benchmark. Our contributions span seven interlocking grounding mechanisms: (i) an input-gating filter that rejects fragmentary user inputs before retrieval, (ii) a strict citation-grounding prompt regime separating substantive from procedural law, (iii) post-generation **evidence validation** that machine-checks every cited article against the retrieved context, (iv) a corrective LLM retry with an explicit block-list of forbidden article numbers, (v) an **article-lookup rescue** that indexes 1,494 distinct Egyptian-law articles from chunk metadata and uses them as a second-chance grounding source, (vi) **iterative retrieval** that auto-expands the k-window when validation fails — without requiring an additional LLM call, and (vii) deterministic answer post-processing that rewrites awkward template-leakage phrases and strips persona-breaking openers. We further introduce a document-upload subsystem supporting three retention semantics — per-question attachment, session-attached document, and permanent corpus ingestion — covering `.txt`, `.pdf`, and `.docx` formats. The complete system, evaluated on a 28-question benchmark covering substantive and procedural Egyptian criminal law, achieves a **100 % evidence-validation pass rate with zero hallucinations**, an 8-fold improvement over the baseline. As a further contribution we release the underlying corpus — 933 legacy-format source files manually OCR-cleaned into 1,057 UTF-8 documents (47,028 indexed chunks) — publicly on HuggingFace. Beyond single-question Q&A, the system escalates open-ended case work to a **six-stage multi-agent agentic pipeline** — document analysis, weakness detection, per-weakness legal-research and precedent retrieval, defence-strategy ranking, and grounded synthesis — in which a deterministic, code-computed timing verdict is injected as a hard fact to eliminate a recurring chronological-reasoning error, every argument is anchored to retrieved authority rather than parametric memory, and a draft→verify→revise self-check closes the argument-level hallucination gap; the pipeline degrades gracefully to a single-shot path on any agent failure. These case-analysis endpoints (weakness analysis, defence-memorandum drafting, forensic-consistency checking) are further governed by an expert-derived procedural-defence reasoning checklist paired with a grounding-safe few-shot exemplar. The system is deployed as a production FastAPI service with a five-provider, multi-key failover chain, big-context routing, a zero-token answer cache, an in-process rate gate, a wall-clock cascade budget, persistent multi-turn sessions with compaction, token streaming, automated watch-folder ingestion with hot-reload, and a documented .NET integration contract. Finally, we report a retrieval-quality optimisation phase targeting the retrieval ceiling that bounds answer correctness — article-aware chunking that keeps each statute article intact in one retrievable unit (live), a widened cross-encoder candidate pool (live), and a BGE-M3 embedding upgrade prepared behind configuration — together with a scored evaluation harness reporting recall@k, article-recall, primary-hit@k, MRR, hallucination rate, abstention, and confidence calibration over a labeled gold set, so every change is measurable. We also report a practical systems finding: on CPU-only hardware the highest-quality embedder can be infeasible to *build* without accelerator access, making the embedder a joint quality/operability choice. We release the system, the evaluation harness, and a multi-version trail documenting the incremental improvements.
 
-**Keywords:** Arabic Natural Language Processing; Retrieval-Augmented Generation; Legal Information Retrieval; Hallucination Mitigation; Egyptian Criminal Law; Article-Lookup Rescue; Iterative Retrieval; Article-Aware Chunking; BGE-M3
+**Keywords:** Arabic Natural Language Processing; Retrieval-Augmented Generation; Agentic AI; Multi-Agent Systems; Legal Information Retrieval; Hallucination Mitigation; Egyptian Criminal Law; Article-Lookup Rescue; Iterative Retrieval; Article-Aware Chunking; BGE-M3; Neuro-Symbolic Reasoning
 
 ---
 
@@ -31,11 +33,47 @@ The contributions of this work are as follows:
 5. **A document-upload pipeline** (Section 6) supporting three distinct retention semantics — per-question, session-attached, and permanent-corpus — across the three most common Arabic document formats (`.txt`, `.pdf`, `.docx`) and pasted-text strings. The pipeline shares a single parser and Arabic-cleaning module to guarantee consistent behaviour across modes.
 6. **A five-version evaluation trail** (Section 7) on a 28-question Arabic legal benchmark, with the per-version CSV outputs released alongside the system, allowing reproducible auditing of every architectural change.
 7. **A procedural-defence reasoning checklist** (Section 5.8) that encodes expert-lawyer case-analysis heuristics — warrant-timeline nullity, identifier mismatch, chain-of-custody, and intent-from-profession — into the case-analysis prompts, paired with a *grounding-safe* few-shot exemplar that raises reasoning coverage without reintroducing hallucinated citations.
+8. **A six-stage multi-agent agentic case-analysis pipeline** (Section 5.10) that decomposes open-ended legal work (`/weakness`, `/defense`) into specialised agents — document analysis, weakness detection, per-weakness legal-research and precedent retrieval, defence-strategy ranking, and grounded synthesis — orchestrated with bounded-concurrency `asyncio` fan-out, a deterministic *neuro-symbolic* timing verdict computed in code and injected as a hard fact, retrieval-per-weakness grounding so every argument is backed by retrieved authority, and an agentic draft→verify→revise self-check, with automatic fallback to a single-shot path on any agent failure.
 8. **An open Egyptian-criminal-law corpus** (Section 3) manually OCR-processed from 933 legacy `.doc`/`.pdf` source files into 1,057 cleaned UTF-8 documents (47,028 indexed chunks) and released publicly on HuggingFace — to our knowledge the first open-licensed corpus focused on Egyptian criminal law at this scope.
 9. **A production-grade operational architecture** (Sections 4, 8): a multi-provider, multi-key failover chain with big-context routing for large case files, persistent compacting multi-turn sessions, token streaming, automated watch-folder ingestion with in-place index hot-reload, an agentic self-check for defence memoranda (Section 5.9), and a frozen, documented wire contract for an external .NET frontend.
 10. **A retrieval-quality optimisation phase with a scored evaluation harness** (Section 7.6): article-aware chunking that keeps each statute article intact in one retrievable unit and a widened cross-encoder candidate pool (both live), plus a BGE-M3 embedding upgrade prepared behind configuration with build/swap tooling — together targeting the retrieval ceiling that bounds answer correctness — accompanied by a labeled-gold-set harness reporting recall@k, article-recall, primary-hit@k, MRR, hallucination rate, abstention, and confidence calibration, so every retrieval/LLM/chunking change is measurable and reproducible. We additionally report the CPU-embedding-cost constraint that defers the embedding rollout to GPU-equipped hardware.
 
-The remainder of the paper is organised as follows. Section 2 surveys related work on Arabic legal RAG, multilingual retrieval, and hallucination mitigation. Section 3 describes the construction and public release of the Egyptian-criminal-law corpus. Section 4 describes the base retrieval and operational architecture. Section 5 presents the grounding-defence mechanisms in detail. Section 6 describes the document-upload and ingestion subsystem. Section 7 reports the evaluation methodology and results. Section 8 covers implementation, deployment, and frontend integration. Section 9 discusses limitations and Section 10 concludes.
+The remainder of the paper is organised as follows. Section 2 surveys related work on Arabic legal RAG, multilingual retrieval, and hallucination mitigation. Section 3 describes the construction and public release of the Egyptian-criminal-law corpus. Section 4 describes the base retrieval and operational architecture. Section 5 presents the grounding-defence mechanisms and the multi-agent agentic case-analysis pipeline in detail. Section 6 describes the document-upload and ingestion subsystem. Section 7 reports the evaluation methodology and results. Section 8 covers implementation, deployment, and frontend integration. Section 9 discusses strengths, limitations, challenges, lessons learned, and future work, and Section 10 concludes.
+
+### 1.2 Development Methodology, Design Philosophy, and Lifecycle
+
+The system was developed in an **incremental, evaluation-driven** manner: every architectural change was motivated by a concrete failure observed in the preceding evaluation round, implemented behind a configuration flag, and kept only if the next round's scorecard improved (or, in one instructive case, reverted when it regressed — Section 9). The version trail is itself a contribution: it isolates the marginal effect of each mechanism on the hallucination rate.
+
+Three principles guided every decision. **(P1) Grounding over fluency.** In a legal tool, a wrong citation delivered fluently is more dangerous than an honest refusal; we therefore optimise for *traceability of every claim to retrieved text*, treating an ungrounded-but-plausible answer as a hard failure. **(P2) Defence in depth.** No single mechanism removes hallucination; heterogeneous failure modes (fragmentary input, prompt ambiguity, retrieval gaps, parametric-memory citations, template leakage) each demand a dedicated, independently-toggleable layer. **(P3) Graceful degradation.** Every advanced component — reranker, agentic pipeline, rescue, self-check, each LLM provider — has a defined fallback so that a single sub-system failure narrows capability rather than breaking the request.
+
+Table 0 summarises the seven cumulative development phases from initial design to the current system; each phase builds on the indices, services, and configuration of its predecessors and was gated on the evaluation scorecard of the previous one.
+
+**Table 0: Development lifecycle from initial design to the current system.**
+
+| Phase | Focus | Key deliverables | Outcome |
+|-------|-------|------------------|---------|
+| 0 — Design | Requirements, corpus scoping, architecture choice | RAG over hybrid retrieval selected; grounding-fidelity adopted as primary metric; wire contract sketched with the .NET team | Target architecture fixed; metric defined |
+| 1 — Corpus | Data acquisition + cleaning | 933 legacy files manually OCR-cleaned → 1,057 UTF-8 docs; HuggingFace release | 47,028-chunk index; open corpus |
+| 2 — Baseline RAG | Hybrid retrieval + generation | FAISS + BM25 + RRF + cross-encoder rerank; confidence scoring; FastAPI service | Functional assistant; 28.6 % hallucination (v3) |
+| 3 — Grounding defence | Hallucination suppression | Input gate, citation-grounding prompts, evidence validation, block-list retry | 28.6 → 7.1 % (v4) |
+| 4 — Rescue + iteration | Recall-side recovery | Article-lookup rescue, iterative *k*-expansion, answer post-processing | 7.1 → 0.0 % (v6–v8) |
+| 5 — Agentic case work | Open-ended reasoning | Six-agent weakness/defence pipeline, procedural-defence checklist, memo self-check, charge-fidelity guard | Reasoning ~70 % → expert-aligned |
+| 6 — Retrieval ceiling | Recall optimisation + measurement | Article-aware chunking, widened rerank pool, BGE-M3 prepared, scored eval harness | 79 % article-anchored chunks; auditable tuning |
+| 7 — Productionisation | Reliability + integration | Five-provider failover, answer cache, rate gate, cascade budget, streaming, watch-ingest, Docker, tunnel, .NET contract | Deployable, free-tier-survivable service |
+
+The principal engineering decisions, the alternatives considered, and the rationale for each are recorded in Table 0b. Several invert the defaults one would adopt with unlimited compute or a paid LLM tier — a direct consequence of the CPU-only, free-tier deployment target.
+
+**Table 0b: Major design decisions and their rationale.**
+
+| Decision | Alternative considered | Rationale for the choice |
+|----------|------------------------|--------------------------|
+| Hybrid retrieval (dense + sparse + RRF) | Pure dense (FAISS only) | Lexical BM25 recovers exact article-number and rare-term matches dense embeddings miss; RRF needs no score calibration between the two. |
+| Post-generation defence pipeline | Better retriever alone | Even perfect retrieval cannot stop the LLM citing from parametric memory; detecting and rescuing this is orthogonal to recall. |
+| Deterministic timing verdict in code | Let the LLM reason over the timeline | The model repeatedly inverted arrest-vs-warrant chronology; a code-computed verdict injected as a hard fact removes the error class entirely (neuro-symbolic). |
+| Multi-agent decomposition for case work | Single-shot long prompt | Per-weakness retrieval grounds each argument in its own authority; specialised agents emit checkable JSON, enabling strategy-level pruning of weak arguments. |
+| OpenRouter (Qwen-2.5-72B) primary | Groq Llama-3.3-70B primary | A funded, usage-billed key removes the 6,000-TPM free-tier ceiling that capped multi-call (retry/rescue/agent) requests; Groq/Cerebras/xAI/Gemini remain free fallbacks. |
+| Exact-match answer cache | Semantic/fuzzy cache | In law, serving a cached answer to a *different* question is unacceptable; exact normalised-match guarantees correctness while still saving tokens. |
+| CPU embeddings, BGE-M3 deferred | Build BGE-M3 index now | On the CC-5.0 GPU (below PyTorch's floor) BGE-M3 builds at ~5.5 s/chunk → multiple days; the embedder becomes a joint quality/operability choice (Section 7.6). |
 
 ---
 
@@ -85,19 +123,82 @@ A central practical obstacle to Arabic legal RAG is the *scarcity of clean, mach
 
 Conan is implemented as a FastAPI service backed by a retrieval index of 47,028 chunks built from the Egyptian Penal Code, the Code of Criminal Procedure, a curated subset of cassation rulings, the Cassation Encyclopedia, and supplementary criminal-law references. The base architecture follows the pattern established by [1], [2], and [4]:
 
-**Retrieval.** A user query is encoded with a multilingual sentence-transformer (paraphrase-multilingual-MiniLM-L12-v2 in our deployment) and used to query a FAISS index of pre-computed chunk embeddings. In parallel, the same query is BM25-tokenised (with Arabic-Indic digit normalisation and alef-form unification) and scored against the corpus via a `rank_bm25` BM25Okapi index. The top-30 results from each branch are fused using **Reciprocal Rank Fusion** with the canonical RRF constant `k = 60`. The fused top-30 candidates are passed to a **cross-encoder reranker** (BGE-Reranker-v2-M3 with sigmoid-bounded outputs), which produces the final top-`k` set (default `k = 7`) used as context.
+**Retrieval.** A user query is encoded with a multilingual sentence-transformer (`paraphrase-multilingual-MiniLM-L12-v2` in the live deployment) and used to query a FAISS index of pre-computed chunk embeddings (dense branch, top-60 candidates). In parallel, the same query is BM25-tokenised (with Arabic-Indic digit normalisation and alef-form unification) and scored against the corpus via a `rank_bm25` BM25Okapi index (sparse branch, top-60). The two ranked lists are fused using **Reciprocal Rank Fusion** with the canonical RRF constant `k = 60`. An optional **domain boost** (`USE_DOMAIN_BOOST`) adds a small weight (`DOMAIN_BOOST_WEIGHT = 0.05`) to the fused score of chunks whose `doc_type` matches the query's inferred domain (procedural vs. substantive) before reranking. The fused top-60 candidates (`RETRIEVAL_K_RERANK`) are passed to a **cross-encoder reranker** (BGE-Reranker-v2-M3, sigmoid-bounded), which produces the final top-`k` set (default `k = 10`). Because the cross-encoder is CPU-bound, concurrent reranks are capped by a semaphore (`RERANK_MAX_CONCURRENCY = 2`) so excess requests queue briefly rather than thrashing the CPU and breaching the client timeout.
 
 **Context expansion.** Each surviving chunk is grown by one *same-source* neighbour on each side, providing roughly 2× the textual context per chunk while preventing cross-document contamination.
 
-**Generation.** The final context, expert-rule entries (matched by keyword from a curated `expert_rules.json`), and the user's question are formatted into a prompt template enforcing strict textual adherence ("Use the provided texts ONLY") and dispatched to the LLM provider chain. The deployment uses Groq's `llama-3.3-70b-versatile` as the primary, with Google Gemini and OpenRouter Qwen as fallback tiers. Multi-key rotation handles per-minute rate limits.
+**Generation.** The final context, expert-rule entries (matched by keyword from a curated `expert_rules.json`), and the user's question are formatted into a prompt template enforcing strict textual adherence ("Use the provided texts ONLY") and dispatched to the LLM provider chain. The current deployment uses OpenRouter (`qwen/qwen-2.5-72b-instruct`) as the primary provider for every feature, with Groq (`llama-3.3-70b-versatile`), Cerebras, xAI Grok, and Google Gemini as free fallback tiers; multi-key rotation within each provider handles per-minute and per-day rate limits. (The version-trail evaluation of Section 7 was run with Groq Llama-3.3-70B as primary; the move to a funded OpenRouter key removed the free-tier token-per-minute ceiling that capped the multi-call retry/rescue/agent requests.) Per-feature model routing (`MODEL_BY_FEATURE`) sends reasoning-heavy work to the strongest model and high-volume Q&A/chat to a faster tier.
 
-**Confidence scoring.** A weighted heuristic over four signals — mean rerank score, source count (capped at 5), article-validation pass/fail (Section 5.3), and topic-match (encyclopedia folder taxonomy matching) — produces a confidence value in [0, 1] alongside a structured breakdown. Answers below a configurable threshold (default 0.5) carry a low-confidence warning.
+**Confidence scoring.** A weighted heuristic over four signals — mean rerank score (weight 0.30), source count (0.20, capped at 5), article-validation pass/fail (0.30, Section 5.3), and topic-match (0.20, encyclopedia folder taxonomy) — produces a confidence value in [0, 1] alongside a structured breakdown. Because the BGE reranker's sigmoid scores sit low (~0.1) on Arabic legal text, the rerank signal is gamma-calibrated (`RERANK_CALIBRATION_GAMMA = 0.5`) to lift the squashed mid-range without saturating strong matches. Answers below a configurable threshold (default 0.5) carry a low-confidence clarification warning.
 
 **Conversational layer.** Beyond stateless Q&A, the system exposes a multi-turn chat endpoint backed by a thread-safe `SessionManager`. Each `session_id` accumulates a turn history; once it exceeds `SESSION_MAX_TURNS` (default 6) the older turns are LLM-summarised into a single `[ملخص المحادثة السابقة]` block while the most recent `SESSION_KEEP_RECENT` (default 3) turns are kept verbatim, bounding prompt growth without losing legal context. Sessions persist to disk as atomically-written JSON (write-to-`.tmp` + `os.replace`) so they survive restarts, and a background pruner evicts sessions idle longer than `SESSION_TTL_HOURS` (default 168 h). Each session can additionally carry a list of *attached documents* (Section 6). A streaming variant (`POST /api/v1/chat/stream`) returns Server-Sent Events as tokens are generated, with the terminal event carrying the full confidence, sources, and grounding warnings once post-generation validation completes.
 
-**Multi-provider resilience.** Generation is served by an ordered provider chain — Groq (`llama-3.3-70b-versatile`) → Cerebras → xAI → Google Gemini → OpenRouter Qwen — in which each provider rotates across its own list of API keys on HTTP 429/quota errors before the chain falls through to the next provider. This multi-key, multi-provider rotation is what lets the service run on free tiers despite per-minute and per-day token caps. A complementary **big-context routing** rule guards against oversized prompts: each provider declares a maximum request size (`PROVIDER_MAX_PROMPT_CHARS`; e.g. 26,000 chars for Groq, 80,000 for OpenRouter), and a request whose assembled prompt exceeds a provider's budget transparently skips that provider and is routed to a larger-context tier — allowing the case-analysis endpoints to accept full case files (up to 50,000 characters) without failing on the primary provider's context window.
+**Multi-provider resilience.** Generation is served by an ordered, five-provider chain — OpenRouter (`qwen-2.5-72b`, primary) → Groq (`llama-3.3-70b-versatile`) → Cerebras → xAI Grok → Google Gemini — in which each provider rotates across its own list of API keys on HTTP 429/quota errors before the chain falls through to the next provider. (Google Gemini supports several per-project keys, each with its own free daily quota, so listing several multiplies the free budget.) This multi-key, multi-provider rotation is what lets the service survive free-tier per-minute and per-day token caps. A complementary **big-context routing** rule guards against oversized prompts: each provider declares a maximum request size (`PROVIDER_MAX_PROMPT_CHARS`; e.g. 26,000 chars for Groq, 16,000 for Cerebras, 80,000 for OpenRouter, no cap for Gemini), and a request whose assembled prompt exceeds a provider's budget transparently skips that provider and is routed to a larger-context tier — allowing the case-analysis endpoints to accept full case files (up to 50,000 characters) without failing on a provider's context window.
+
+**Free-tier and latency safeguards.** Three coordinated mechanisms keep the service usable under free-tier budgets and a fixed client timeout. *(i) A zero-token answer cache* (`AnswerCache`, LRU-bounded, optional atomic disk persistence) serves the stateless `/qa` endpoint: an exact normalised-question match (whitespace + Arabic-Indic digits folded only — never fuzzy or semantic, since serving a cached answer to a *different* legal question is unacceptable) returns instantly and at zero LLM cost, which also lets a demo be "pre-warmed." *(ii) An in-process rate gate* (`LLM_MIN_INTERVAL_S = 2 s`) enforces a minimum spacing between physical provider requests, smoothing the multi-call-per-request pattern (draft → retry → rescue) and concurrent users so a per-minute budget is not burst-exhausted. *(iii) A wall-clock cascade budget* (`QA_CASCADE_BUDGET_S = 90 s`) bounds worst-case latency: the initial retrieve-and-answer always runs, but once cumulative request time crosses the budget no *new* corrective stage (iterative retrieval, retry, rescue) is launched and the best-grounded answer so far is returned — keeping the worst case under the ~180 s client timeout regardless of how slow a fallback LLM is.
 
 **Configurable embeddings and reranker.** The embedding backend is pluggable: the default is a local sentence-transformer on CPU (`BAAI/bge-m3`, 1024-dim, in the reference configuration; the deployed index uses `paraphrase-multilingual-MiniLM-L12-v2`, 384-dim), and setting `USE_REMOTE_EMBEDDINGS` switches to a remote provider (Google Gemini embeddings, rate-limited to 15 RPM via batching, or OpenRouter). Because vector dimensionality and semantics differ, switching the embedding provider requires rebuilding the FAISS index. The cross-encoder reranker (`BGE-Reranker-v2-M3`) is likewise toggleable via `USE_RERANKER`; if disabled or unable to load, retrieval degrades gracefully to RRF-only ordering with no break in behaviour.
+
+### 4.1 Technology stack
+
+The stack is deliberately built on open, self-hostable components for the retrieval core, so the only externally-billed dependency is the generation LLM — and even that is abstracted behind a five-provider chain that runs on free tiers.
+
+**Table 2: Technology stack by architectural layer.**
+
+| Layer | Technology | Role |
+|-------|-----------|------|
+| Service framework | FastAPI + Uvicorn (ASGI) | Async HTTP API, dependency-injected singletons, SSE streaming |
+| Dense retrieval | FAISS (inner-product index) | Approximate nearest-neighbour over chunk embeddings |
+| Embeddings | sentence-transformers: MiniLM-L12-v2 (384-d, live); BGE-M3 (1024-d, prepared) | Encode chunks/queries into the vector space |
+| Sparse retrieval | `rank_bm25` (BM25Okapi) | Lexical recall of exact terms / article numbers |
+| Fusion | Reciprocal Rank Fusion (k = 60) | Calibration-free merge of dense + sparse ranks |
+| Reranking | BGE-Reranker-v2-M3 (CrossEncoder, sigmoid) | Re-score top-60 fused candidates → top-10 |
+| Generation | OpenRouter Qwen-2.5-72B (primary) + Groq / Cerebras / xAI / Gemini | Grounded Arabic answer synthesis with failover |
+| Agent orchestration | `asyncio` (bounded-concurrency `gather`) | Fan-out of per-weakness research; semaphore-capped |
+| Document parsing | poppler `pdftotext`, PyPDF2, `docx2txt` | PDF/DOCX/TXT extraction with Arabic-encoding fallback |
+| Persistence | Atomic JSON files (sessions, cache, ingest registry) | Restart-survivable state without a database |
+| Reference UI | Streamlit | Reference client exercising every endpoint |
+| Deployment | Docker + Compose; Cloudflare / ngrok tunnel; systemd | Reproducible packaging and laptop-hosted remote exposure |
+
+### 4.2 Service modules and API surface
+
+The application is a thin router layer over process-wide singleton services loaded once at start-up (Table 3), exposing the REST surface in Table 4. Centralising state in singletons (`retrieval_service`, `reranker_service`, `article_lookup_service`, `session_manager`, `answer_cache`) means the expensive models are paid for once, and the hot-reload path can swap index state in place without re-initialising them.
+
+**Table 3: Core service modules (`app/services/`) and responsibilities.**
+
+| Module | Responsibility |
+|--------|----------------|
+| `retrieval.py` | FAISS + BM25 + RRF + domain-boost + reranker pipeline; `reload_indices()` hot-reload |
+| `reranker.py` | BGE cross-encoder singleton (sigmoid-bounded); graceful no-op on load failure |
+| `chunking.py` | Article-aware, doc-type-aware chunker — single source of truth for both index writers |
+| `preprocessing.py` | Arabic normalisation, BM25 tokenisation, doc-type/topic classifiers, article-reference extractor |
+| `confidence.py` | `validate_evidence`, `topic_match`, `compute_confidence` (pure functions) |
+| `article_lookup.py` | {article → chunks} index for the rescue path; three-tier quality ranking |
+| `llm.py` | Sync/async provider-chain client + token-streaming generator; rate gate; big-context routing |
+| `agents.py` | Six-agent weakness/defence orchestrators + deterministic timing verdict |
+| `memo_agent.py` | Draft → verify → revise memo self-check |
+| `postprocessing.py` | Casual-opener stripping + embedded-refusal rewrite |
+| `session.py` | Sliding-window chat compaction, atomic persistence, TTL pruner, attachments |
+| `answer_cache.py` | LRU, exact-match, zero-token `/qa` cache with optional disk persistence |
+| `document_loader.py` / `upload_helper.py` | PDF/DOCX/TXT loading + shared upload parsing/cleaning |
+
+**Table 4: REST API surface (prefix `/api/v1`).**
+
+| Verb | Path | Function |
+|------|------|----------|
+| POST | `/qa` | Stateless grounded Q&A (full defence pipeline + cache) |
+| POST | `/qa/upload` | Q&A with a per-question document attachment |
+| POST | `/chat` | Multi-turn chat (Gemini-first fallback chain, sessions) |
+| POST | `/chat/stream` | Server-Sent-Events token streaming |
+| POST | `/chat/attach` | Bind a document to a session (persisted) |
+| GET/DEL | `/chat/{sid}/attachments[/{id}]` | Attachment lifecycle management |
+| POST | `/weakness` | Agentic weakness analysis of a case file |
+| POST | `/defense` | Agentic defence-memorandum drafting + self-check |
+| POST | `/forensic` | Forensic-consistency / charge-fidelity analysis |
+| POST | `/summarize` | Legal-document summarisation |
+| POST | `/parse` | Preview-parse an uploaded document to clean text |
+| POST | `/ingest`, `/ingest/scan` | Permanent corpus ingestion + watch-folder scan with hot-reload |
+| GET | `/health` | Liveness + loaded-index status |
 
 ---
 
@@ -183,7 +284,27 @@ A companion **charge-fidelity** rule extends the same precision principle to the
 
 ### 5.9 Agentic Self-Check for Defence Memoranda
 
-The defence-memorandum endpoint (`/defense`) applies an additional agentic grounding pass on top of the per-answer evidence validation of Section 5.3. Because a memorandum is a long, multi-paragraph document, a single evidence-validation gate is coarse: it flags an ungrounded article but does not by itself repair the surrounding argument. Instead, the draft memorandum is fed back to the LLM under a dedicated reviewer prompt (`verify_memo`) whose sole instruction is to make the memo *fully grounded* in the provided material — removing or correcting any article number not present in the retrieved texts, deleting any assertion the case facts do not support, and introducing no new citation or fact — while preserving the four-part structure (`الوقائع`, `الإطار القانوني`, `أوجه الدفاع`, `الطلبات`). This draft → verify → revise loop runs up to `MEMO_SELF_CHECK_MAX_ITERS` times (default 1) and stops early once a pass introduces no further change. The number of revision passes applied is surfaced to the client as the `self_check_revisions` response field, and the mechanism is toggleable via `MEMO_SELF_CHECK`.
+The defence-memorandum endpoint (`/defense`) applies an additional agentic grounding pass on top of the per-answer evidence validation of Section 5.3. Because a memorandum is a long, multi-paragraph document, a single evidence-validation gate is coarse: it flags an ungrounded article but does not by itself repair the surrounding argument. Instead, the draft memorandum is fed back to the LLM under a dedicated reviewer prompt (`verify_memo`) whose sole instruction is to make the memo *fully grounded* in the provided material — removing or correcting any article number not present in the retrieved texts, deleting any assertion the case facts do not support, and introducing no new citation or fact — while preserving the four-part structure (`الوقائع`, `الإطار القانوني`, `أوجه الدفاع`, `الطلبات`). This draft → verify → revise loop runs up to `MEMO_SELF_CHECK_MAX_ITERS` times (default 1) and stops early once a pass introduces no further change. The number of revision passes applied is surfaced to the client as the `self_check_revisions` response field, and the mechanism is toggleable via `MEMO_SELF_CHECK`. This self-check is one stage of the larger multi-agent pipeline described next.
+
+### 5.10 Multi-Agent Agentic Case-Analysis Pipeline
+
+Single-question Q&A is well served by the layered defence pipeline of Sections 5.1–5.7. *Open-ended case work* — reading a full criminal case file and producing a weakness analysis or a defence memorandum — is qualitatively harder: it requires extracting structured facts, hypothesising multiple independent lines of defence, grounding each one in its own statutory and precedential authority, judging which arguments actually hold, and only then writing. A single-shot "case → LLM → output" prompt collapses all of these into one undifferentiated generation and tends both to miss high-value arguments and to assert claims it cannot support. We therefore replace the single-shot path for `/weakness` and `/defense` with an **agentic, multi-agent pipeline** (`USE_AGENTIC_PIPELINE`, on by default) that decomposes the task into six specialised agents with a deterministic orchestrator.
+
+**Agents and orchestration.** Intermediate agents are forced to emit strict JSON (robustly parsed with a balanced-brace fallback), so each stage's output is machine-checkable before the next consumes it.
+
+**Table 7: Roles of the six agents in the case-analysis pipeline.**
+
+| # | Agent | Function | Output |
+|---|-------|----------|--------|
+| 1 | Document Analysis | Extract structured facts, parties, charges, evidence items, and a dated/timed chronological timeline from the case file | JSON: facts, charges, `timeline` |
+| 2 | Weakness Detection | Turn the analysis into typed weakness hypotheses, each with a focused legal-research query | JSON list of weaknesses |
+| 3–4 | Legal Research & Precedent Retrieval | For each top weakness, one hybrid retrieval whose pool yields both doctrine/statute and court-precedent chunks (split by `doc_type`); run concurrently | Contexts + sources per weakness |
+| 5 | Defence Strategy | Rank weaknesses against the *retrieved* authorities, keep the strong, discard the disproven, order the argument | JSON: kept + ordered IDs |
+| 6 | Synthesis | Write the final Arabic weakness analysis or four-part defence memorandum from the kept, grounded authorities only | Arabic text + sources |
+
+The flow is: **Document Analysis → Weakness Detection → (Legal Research ‖ Precedent Retrieval, per weakness) → Defence Strategy → Synthesis**, with the memo self-check (Section 5.9) applied to the synthesised memorandum. The orchestrators `run_weakness_pipeline` and `run_defense_pipeline` share one private `_run_pipeline`. After Agent 2, only the top `AGENT_MAX_WEAKNESSES` (= 6) weaknesses are researched in depth; the rest are carried with their hypothesis text. The per-weakness retrievals (Agents 3–4) are launched concurrently with `asyncio.gather`, but actual CPU concurrency is bounded by the reranker semaphore, so a full memo stays CPU-affordable (~2–3 minutes rather than ~10). A single weakness failing to retrieve does not sink the run (`return_exceptions=True` filters it out); only if *every* weakness fails, or a critical agent errors, does the orchestrator raise `AgentPipelineError` — at which point the router silently falls back to the single-shot path. The pipeline is thus never a hard dependency, and it returns the structured intermediates (timeline, weaknesses, authorities, sources) alongside the final text, so the client can render the reasoning trace, not just the conclusion.
+
+**Neuro-symbolic grounding: the deterministic timing verdict.** The single most damaging recurring error in case analysis was *chronological*: the model repeatedly mis-read whether the arrest/search happened before or after the prosecution warrant (`إذن النيابة`) — inverting the order even when the timeline was extracted correctly — and a wrong verdict here flips the entire defence. Rather than prompt harder, we move this judgement out of the LLM entirely. `compute_timing_verdict` parses each timeline event's Arabic date and time string (handling `صباحاً`/`مساءً`/`منتصف الليل` and the `الساعة 12:00 صباحاً`-as-midnight convention), computes the signed gap between warrant and seizure in code, and emits one of three deterministic verdicts: seizure *before* the warrant (the nullity argument `بطلان القبض والتفتيش` applies, with `ما بُني على باطل فهو باطل`), *within* the 24-hour validity window (the timing is sound and the "arrest preceded the warrant" plea is *forbidden* as contrary to the record), or *after* the window expired (a different nullity applies). This verdict is injected into the downstream agents' context as a hard fact they cannot re-derive incorrectly — a small but decisive neuro-symbolic component that converts a stubborn reasoning failure into a solved sub-problem.
 
 ---
 
@@ -268,20 +389,40 @@ Two questions are particularly informative:
 
 These observations underline a key point: **no single mechanism is sufficient**. The v3-baseline failures distribute across distinct root causes (input fragments, prompt ambiguity, retrieval coverage gaps, LLM memory citations), and each requires its own layer of defence. The cumulative pipeline reduces every category to zero in v8, but each layer contributes meaningfully and removing any one would degrade performance.
 
+Table 1b disaggregates the headline pass-rate by question category, exposing which defence layers recover which failure modes.
+
+**Table 1b: Pass rate by question category across versions.**
+
+| Category | v3 | v4 | v6 | v7 | v8 | total |
+|----------|----|----|----|----|----|-------|
+| Substantive | 8/11 | 9/11 | 10/11 | 10/11 | **11/11** | 11 |
+| Procedural | 0/1 | 1/1 | 1/1 | 1/1 | **1/1** | 1 |
+| Reasoning | 7/8 | 8/8 | 8/8 | 8/8 | **8/8** | 8 |
+| Fragment | 5/8 | 8/8 | 8/8 | 8/8 | **8/8** | 8 |
+| **Total** | 20/28 | 26/28 | 27/28 | 27/28 | **28/28** | 28 |
+
+Beyond headline metrics, Table 1c contrasts *capabilities* with the related Arabic-legal-RAG work. The cited prior work concentrates on the retrieval stage; none reports a post-generation grounding-defence pipeline, an agentic case-analysis flow, or an open Egyptian-criminal-law corpus.
+
+**Table 1c: Capability comparison with related Arabic-legal-RAG work (✓ present, ✗ not reported).**
+
+| Capability | El-Beltagy [1] | Hrimech [2] | Aboasal [5] | ALARB [3] | Conan |
+|------------|:--:|:--:|:--:|:--:|:--:|
+| Hybrid retrieval (dense+sparse) | ✗ | ✗ | ✓ | ✗ | ✓ |
+| Cross-encoder reranking | ✗ | ✗ | ✗ | ✗ | ✓ |
+| Post-gen. hallucination defence | ✗ | ✗ | ✗ | ✗ | ✓ |
+| Evidence/citation validation | ✗ | ✗ | ✗ | ✗ | ✓ |
+| Agentic multi-agent pipeline | ✗ | ✗ | ✗ | ✗ | ✓ |
+| Neuro-symbolic reasoning tool | ✗ | ✗ | ✗ | ✗ | ✓ |
+| Both substantive + procedural law | ✗ | ✗ | ✗ | ✗ | ✓ |
+| Document upload / ingestion | ✗ | ✗ | ✗ | ✗ | ✓ |
+| Production service + wire contract | ✗ | ✗ | ✗ | ✗ | ✓ |
+| Open released corpus | ✗ | ✗ | ✗ | ✓ | ✓ |
+
 ### 7.5 Cross-Model Benchmark (Protocol)
 
 To situate Conan against general-purpose frontier models on Arabic legal questions, we provide a head-to-head harness (`benchmark_llms.py`) that queries our full RAG system alongside `openai/gpt-4o-mini` and `anthropic/claude-sonnet-4.5` (both routed through a single OpenRouter key for cost parity). It runs in two modes that isolate two distinct questions: **RAG mode**, where all three models answer from the *same* retrieved context (isolating answer-synthesis quality from retrieval), and **raw mode**, where each model answers from its own parametric knowledge with no retrieval (probing baseline Arabic criminal-law knowledge). Each run emits a per-model CSV recording latency, answer length, and cited article numbers, against which the same evidence-validation extractor (Section 5.3) is applied to measure citation grounding on equal footing.
 
 *Quantitative results are pending a full benchmark run and will be reported in a subsequent revision;* at the time of writing the comparison could not be executed because of API-access limits on the shared OpenRouter key. The protocol is documented here so the comparison is reproducible once access is restored.
-
-| Mode | System | Mean latency | Cited articles | Grounded % |
-|---|---|---|---|---|
-| RAG | Conan (ours) | — | — | — |
-| RAG | gpt-4o-mini | — | — | — |
-| RAG | claude-sonnet-4.5 | — | — | — |
-| Raw | Conan (ours) | — | — | — |
-| Raw | gpt-4o-mini | — | — | — |
-| Raw | claude-sonnet-4.5 | — | — | — |
 
 ---
 
@@ -317,29 +458,91 @@ The embedding upgrade (Enhancement 1), however, requires re-embedding the entire
 
 **Frontend integration contract.** The API is consumed by a separate .NET frontend. To support this, the response schema is treated as a frozen wire contract: the structured shape returned by `/qa`, `/chat`, `/weakness`, `/defense`, and `/forensic` — `answer`/`analysis`/`memorandum`, plus `confidence_score`, `confidence_factors`, `sources[]` (with per-source `legal_topic`, `article`, `referenced_articles`, `page`, `retrieval_score`, `rerank_score`), `warnings[]`, `conflicts_detected`, `latency_ms`, and `model` — is documented field-by-field in two contract files (`api_contract.md`, `backend_contract.md`) and field names cross the wire verbatim. Arabic-language clarification `warnings` are designed to be forwarded to the end-user as-is.
 
-**Configurability.** Operational parameters — retrieval `k`, chunk sizes, confidence weights and threshold, temperatures, provider chain and per-provider request budgets, embedding and reranker selection, session limits, and self-check iterations — are centralised in a single `config.py` (overridable by environment variables), so behaviour can be tuned for a deployment without code changes.
+**Configurability.** Operational parameters are centralised in a single `config.py` (every value overridable by an environment variable; new vars are mirrored in `.env.example`), so behaviour can be tuned for a deployment without code changes. Table 8 lists the most consequential tunables and their production defaults.
+
+**Table 8: Principal configuration parameters and production defaults.**
+
+| Parameter | Default | Effect |
+|-----------|---------|--------|
+| `RETRIEVAL_K` | 10 | Final chunks passed to the LLM |
+| `RETRIEVAL_K_DENSE/SPARSE` | 60 / 60 | FAISS / BM25 candidate pool before fusion |
+| `RETRIEVAL_K_RERANK` | 60 | Fused candidates re-scored by the cross-encoder |
+| `RRF_K` | 60 | Reciprocal-Rank-Fusion constant |
+| `RERANK_MAX_CONCURRENCY` | 2 | Cap on simultaneous CPU reranks |
+| `CONFIDENCE_WEIGHTS` | .30/.20/.30/.20 | rerank / sources / article-valid. / topic-match |
+| `RERANK_CALIBRATION_GAMMA` | 0.5 | Lifts squashed low sigmoid rerank scores |
+| `ITERATIVE_K_SEQUENCE` | 10, 18 | Adaptive *k*-expansion on validation failure |
+| `RETRY_MAX_ATTEMPTS` | 1 | Block-list corrective retries |
+| `QA_CASCADE_BUDGET_S` | 90 | Wall-clock budget for the corrective cascade |
+| `LLM_MIN_INTERVAL_S` | 2.0 | In-process rate gate between provider calls |
+| `AGENT_MAX_WEAKNESSES` | 6 | Weaknesses given deep per-weakness research |
+| `AGENT_RESEARCH_K` | 6 | Chunks retrieved per weakness |
+| `MEMO_SELF_CHECK_MAX_ITERS` | 1 | Memo verify → revise passes |
+| `MAX_CONTEXT_CHARS` / `MAX_INPUT_CHARS` | 12k / 50k | Context budget / max case-file size |
+| `SESSION_MAX_TURNS` / `KEEP_RECENT` | 6 / 3 | Compaction trigger / verbatim window |
+| `SESSION_TTL_HOURS` | 168 | Idle-session pruning (7 days) |
 
 ---
 
-## 9. Limitations and Future Work
+## 9. Strengths, Limitations, Challenges, and Lessons Learned
 
-**LLM cost on free tiers.** The full pipeline can incur up to 3 LLM calls per hard question (initial generation, corrective retry, article-lookup rescue). Combined with the Groq free-tier 6,000-tokens-per-minute budget, this places a practical ceiling on evaluation throughput. We mitigate via inter-request delays in the evaluation harness and a hard cap of `RETRY_MAX_ATTEMPTS = 1` on the corrective retry. Paid-tier providers (OpenRouter GPT-4o / Anthropic Claude) would lift this constraint at a marginal cost increase.
+### 9.1 Strengths and practical impact
 
-**Multi-query expansion regression.** The deliberate negative result reported in v5 — that heuristic synonym expansion *reduces* pass rate on the current index — is consistent with the [1] observation that embedding-model semantics for Arabic do not translate cleanly across closely-related but lexically-distinct legal terms (e.g., `التوقيف الاحتياطي` vs `الحبس الاحتياطي`). A semantically-aware query expansion using the LLM itself, rather than a static synonym table, may recover this lost potential — a direction for future work.
+The system's principal strengths follow directly from its design philosophy. **(1) Verifiable grounding**: every statutory citation is machine-checked against retrieved text, yielding a 0 % hallucinated-citation rate on the benchmark — the property that most directly governs whether a legal-AI tool can be trusted in practice. **(2) Defence in depth**: seven independently-toggleable grounding layers plus a six-agent case-analysis pipeline cover heterogeneous failure modes that no single mechanism addresses. **(3) Operability under constraint**: a five-provider failover chain, zero-token cache, rate gate, and cascade budget let the full system run on free LLM tiers and CPU-only hardware — the realistic setting for most academic and public-sector Arabic-legal deployments. **(4) An open corpus**: the released 1,057-document corpus lowers the entry barrier for future Egyptian-criminal-law work. **(5) Real integration**: a frozen wire contract and a live-tunnel deployment let an external .NET team build against the service, demonstrating the architecture beyond a notebook prototype.
 
-**Article-lookup precision.** The rescue mechanism operates on chunk *references* to article numbers, not on chunks that *define* those articles. In approximately 5 % of rescue invocations, the surfaced chunk text mentions the queried article in passing (e.g., a cassation ruling cross-referencing the article) rather than providing the article's text. This is sufficient for validation but suboptimal for answer quality. A dedicated *article-definition* index, populated by paragraph-level segmentation of the Penal Code text, would address this and is planned for future work.
+### 9.2 Challenges encountered and how they were addressed
 
-**Index coverage and embedding model.** The retrieval-quality optimisation of Section 7.6 (v9) — the BGE-M3 (1,024-dimensional) embedding upgrade, article-aware chunking, and the widened reranker pool — directly addresses what was previously this paper's single largest deferred improvement. The reranker widening is live and article-aware chunking is implemented (applied online to new ingests and validated on a sample); the BGE-M3 embedding rollout is deferred to a GPU-equipped environment because, as quantified in Section 7.6, BGE-M3 embedding on the CPU-only reference machine (whose GPU is unusable due to a compute-capability mismatch with current PyTorch) costs ~5.5 s/chunk and projects to multiple days for the full corpus. The build/swap tooling and evaluation harness are in place so the rollout reduces to a single batch run plus a `--compare` scorecard once accelerator access is available.
+**Table 9: Key challenges and the mechanisms they motivated.**
 
-**Evaluation scope.** Our 28-question benchmark is comparatively small relative to the 13,000-case ALARB benchmark of [3] and the 2,500-pair dataset of [2]. While our benchmark was designed for fast, repeatable, manually-auditable evaluation during development, scaling to a comparably-sized benchmark for camera-ready evaluation is the natural next step.
+| Challenge | Resolution |
+|-----------|-----------|
+| Legacy `.doc` / scanned-PDF corpus, unreadable to NLP tooling | Manual OCR + multi-stage Arabic cleaning of 933 files (Section 3) |
+| LLM cites articles from parametric memory | Evidence validation + block-list retry + article-lookup rescue (Sections 5.3–5.5) |
+| Relevant article never enters top-*k* | Iterative *k*-expansion + widened rerank pool + article-aware chunking (Sections 5.6, 7.6) |
+| Substantive-vs-procedural law confusion | Prompt-level law-naming disambiguation (Section 5.2) |
+| Model inverts arrest-vs-warrant chronology | Deterministic, code-computed timing verdict injected as a hard fact (Section 5.10) |
+| Free-tier token/minute exhaustion under multi-call requests | Rate gate, answer cache, single-retry cap, OpenRouter-primary (Section 4) |
+| CPU rerank latency dominating per-query cost | Concurrency semaphore + cascade budget + bounded iterative-*k* |
+| Long memos hallucinate *arguments*, not just article numbers | Agentic draft → verify → revise self-check (Section 5.9) |
+| BGE-M3 infeasible to build on CC-5.0 GPU | Defer rollout; prepare staging-build + atomic-swap tooling (Section 7.6) |
+
+### 9.3 Lessons learned
+
+Four lessons generalise beyond this system. **(L1) Grounding is a post-generation problem as much as a retrieval problem** — improving the retriever alone never removed the parametric-memory citation failure; the defence layers did. **(L2) Move brittle reasoning out of the LLM when it can be computed**: the single largest case-analysis error (chronology) was eliminated not by a better prompt but by a few lines of deterministic code. **(L3) Not every clever idea helps**: heuristic synonym expansion measurably *regressed* retrieval (v5), a result we keep visible rather than bury. **(L4) The best model can be the wrong model**: on CPU-only hardware the highest-quality embedder is infeasible to *build*, making the embedder a joint quality/operability choice rather than a pure quality one.
+
+### 9.4 Known limitations, weaknesses, and risks
+
+**Multi-query expansion regression.** The deliberate negative result reported in v5 — that heuristic synonym expansion *reduces* pass rate on the current index — is consistent with the [1] observation that embedding-model semantics for Arabic do not translate cleanly across closely-related but lexically-distinct legal terms (e.g., `التوقيف الاحتياطي` vs `الحبس الاحتياطي`). We retain the implementation (`USE_MULTI_QUERY=False` by default) and report this as a cautionary data point. A semantically-aware query expansion using the LLM itself, rather than a static synonym table, may recover this lost potential.
+
+**Retrieval ceiling (the dominant residual risk).** The grounding pipeline can only validate citations against what retrieval surfaces; if the authoritative article never reaches the context, the best outcome is an honest refusal, not a correct answer. With the live MiniLM-384 index this ceiling is the single largest bound on answer correctness, and it is exactly what the deferred BGE-M3 upgrade targets (Section 7.6).
+
+**LLM cost and latency.** The full pipeline can incur up to 3 LLM calls per hard Q&A (initial generation, corrective retry, article-lookup rescue) and one call per agent for case work. The OpenRouter-primary move removed the token-per-minute ceiling, but CPU rerank latency still makes a full agentic memo a multi-minute operation — acceptable for considered legal drafting, but a bottleneck for interactive use until a GPU retrieval backend is available.
+
+**Article-lookup precision.** The rescue mechanism operates on chunk *references* to article numbers, not on chunks that *define* those articles. In approximately 5 % of rescue invocations, the surfaced chunk text mentions the queried article in passing rather than providing the article's text. This suffices for validation but is suboptimal for answer quality.
+
+**Evaluation scope.** Our 28-question benchmark is comparatively small relative to the 13,000-case ALARB benchmark of [3] and the 2,500-pair dataset of [2]. It was sized for fast, repeatable, manually-auditable iteration; the cross-model benchmark against frontier LLMs (Section 7.5) is implemented but its quantitative run is still pending API access.
+
+### 9.5 Future Work
+
+We group planned work into five themes, ordered roughly by expected impact on answer correctness.
+
+**Retrieval ceiling: complete the BGE-M3 rollout.** The highest-leverage next step is the embedding upgrade already prepared behind configuration (Section 7.6): re-embedding the full corpus with BGE-M3 (1,024-d, 1,024-token, eliminating MiniLM's 512-token truncation) on GPU-equipped hardware, then running the scored harness's `--compare` to quantify the recall gain. A dedicated *article-definition* index — paragraph-level segmentation of the Penal Code so the rescue path returns the article's *text* rather than a passing cross-reference — would further raise rescue answer quality.
+
+**Toward GraphRAG and a knowledge graph.** The current system is the Phase-1 instantiation of a longer roadmap. The natural architectural evolution is a legal knowledge graph linking articles, offences, defences, and precedents, over which GraphRAG-style multi-hop retrieval could answer questions that require chaining several articles (e.g. aggravating-circumstance + base-offence + penalty) rather than retrieving each in isolation. The `primary_article` / `referenced_articles` metadata already extracted is the seed for such a graph.
+
+**Deeper and more autonomous agents.** The six-agent pipeline is a fixed DAG; future versions could let the orchestrator decide *dynamically* how many weaknesses to research and how deep to retrieve, add a dedicated *cross-examination* agent that adversarially attacks each drafted argument, and add tool-use agents (statute-version lookup, deadline calculators) alongside the existing deterministic timing tool. A semantically-aware, LLM-driven query expansion — the principled successor to the synonym-table approach that regressed in v5 — belongs here too.
+
+**Evaluation at scale.** Scaling to a labelled gold set of comparable size to ALARB [3] (using the released corpus), completing the pending cross-model benchmark against frontier LLMs (Section 7.5), and adding human expert-rated reasoning-quality scoring would strengthen the camera-ready evaluation. Confidence-calibration curves over the larger set would also let the clarification threshold be set empirically rather than heuristically.
+
+**Scalability, robustness, and a possible rebuild.** For higher load the singleton-on-one-process design would move to a horizontally-scaled deployment: the read-only FAISS/BM25 indices replicated behind a load balancer, sessions and the answer cache backed by a shared store (Redis) rather than per-process JSON, and the CPU reranker moved to a GPU inference service to remove the dominant latency cost. A future major version could also be *rebuilt* natively around the knowledge graph and an agent framework rather than retrofitting agents onto the RAG core — trading the current minimal, dependency-light design for richer orchestration once the retrieval upgrade's quality ceiling has been realised. Security and compliance hardening (authentication, rate limiting, audit logging, and PII handling for uploaded case files) is a prerequisite for any real-world legal deployment.
 
 ---
 
 ## 10. Conclusion
 
-We have presented **Conan**, a hallucination-resistant Arabic legal RAG system for Egyptian Criminal Law. By layering six grounding-defence mechanisms — input gating, citation-grounding prompts, evidence validation, corrective retry with a block-list, article-lookup rescue, iterative retrieval, and deterministic answer post-processing — on top of a standard hybrid-retrieval foundation, we drive the rate of hallucinated statutory citations from a baseline of 28.6 % down to **0.0 %** on a 28-question Egyptian-criminal-law benchmark. We additionally introduce a unified document-upload subsystem supporting three retention semantics across `.txt`, `.pdf`, and `.docx` formats. We release the system, the evaluation harness, and the five-version CSV evaluation trail to support reproducible auditing.
+We have presented three complementary contributions: an open Arabic criminal-law corpus, manually constructed from 933 legacy-format source files into 1,057 cleaned documents and released publicly on HuggingFace; **Conan**, a hallucination-resistant Arabic legal RAG system whose seven grounding-defence mechanisms — input gating, citation-grounding prompts, evidence validation, corrective retry with a block-list, article-lookup rescue, iterative retrieval, and deterministic answer post-processing — drive the rate of hallucinated statutory citations from a baseline of 28.6 % down to **0.0 %** on a 28-question Egyptian-criminal-law benchmark; and a six-stage multi-agent agentic pipeline that brings the same grounding discipline to open-ended case work, anchoring every argument in retrieved authority and replacing a stubborn chronological-reasoning failure with a deterministic, code-computed verdict. We additionally introduce a unified document-upload subsystem supporting three retention semantics across `.txt`, `.pdf`, and `.docx` formats, and release the system, the evaluation harness, and the multi-version CSV evaluation trail to support reproducible auditing.
 
-Our key methodological contribution is the demonstration that **no single mechanism is sufficient** for hallucination suppression in Arabic legal RAG; instead, a layered approach matching the heterogeneous failure modes of the underlying components (LLM memory citations, retrieval coverage gaps, fragmentary user inputs, wrong-law confusion, prompt-template leakage) is required. We hope this work informs and accelerates the deployment of Arabic legal-AI systems in production settings.
+Our key methodological contribution is the demonstration that **no single mechanism is sufficient** for hallucination suppression in Arabic legal RAG; instead, a layered approach matching the heterogeneous failure modes of the underlying components (LLM memory citations, retrieval coverage gaps, fragmentary user inputs, wrong-law confusion, prompt-template leakage) is required, and open-ended legal reasoning additionally benefits from decomposition into specialised, individually-grounded agents and from moving brittle reasoning out of the model when it can be computed. The system's practical impact is to show that a trustworthy, verifiable Arabic legal assistant can be built and operated under genuine resource constraints — free LLM tiers and CPU-only hardware — the realistic setting for most academic and public-sector deployments. We hope this work informs and accelerates the deployment of Arabic legal-AI systems in production settings.
 
 ---
 
